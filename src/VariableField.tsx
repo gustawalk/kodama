@@ -86,9 +86,5 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
         <TooltipContent>{variables[name].value || "Empty value"}</TooltipContent>
       </Tooltip>)}
     </div>}
-    {!!names.length && <div className="variable-references">{[...new Set(names)].map((name) => <Tooltip key={name}>
-      <TooltipTrigger asChild><span className={variables[name] ? "variable-reference" : "variable-reference missing"}>{`{{${name}}}`}</span></TooltipTrigger>
-      <TooltipContent>{variables[name] ? variables[name].value || "Empty value" : "Unresolved variable"}</TooltipContent>
-    </Tooltip>)}</div>}
   </div>;
 }

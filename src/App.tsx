@@ -351,9 +351,14 @@ function App() {
     try {
       return JSON.stringify(JSON.parse(response.body), null, 2);
     } catch {
-      return response.body;
+      const contentType = response.headers.find(([key]) => key.toLowerCase() === "content-type")?.[1] ?? "";
+      return /text\/html|application\/xhtml\+xml/i.test(contentType) || /^\s*(?:<!doctype\s+html|<html\b)/i.test(response.body)
+        ? response.body.replace(/>\s*</g, ">\n<").trim()
+        : response.body;
     }
   }, [response]);
+  const responseContentType = response?.headers.find(([key]) => key.toLowerCase() === "content-type")?.[1] ?? "Unknown content type";
+  const responseIsHtml = !!response && (/text\/html|application\/xhtml\+xml/i.test(responseContentType) || /^\s*(?:<!doctype\s+html|<html\b)/i.test(response.body));
   const responseMatches = responseSearch ? responseBody.toLowerCase().split(responseSearch.toLowerCase()).length - 1 : 0;
   const highlightedResponse = () => {
     if (!responseSearch) return responseBody;
@@ -1409,6 +1414,13 @@ function App() {
                     <input aria-label="Find in response" placeholder="Find in response" value={responseSearch} onChange={(event) => setResponseSearch(event.target.value)} />
                     <span>{responseSearch ? `${responseMatches} matches` : ""}</span>
                     <button className="subtle small" onClick={() => { void navigator.clipboard.writeText(responseBody).then(() => toast.success("Response copied"), (err) => toast.error(message(err))); }}>Copy</button>
+                  </div>}
+                  {response && <div className="response-details">
+                    <span className="response-content-type">{responseContentType.split(";")[0]}</span>
+                    <span className="response-url" title={response.url}>{response.url}</span>
+                  </div>}
+                  {response && responseView === "body" && responseIsHtml && <div className="response-notice">
+                    This endpoint returned an HTML page. If you expected JSON, check that the API hostname and route are correct; some sites return their frontend page for unknown API paths.
                   </div>}
                   {error
                     ? (
