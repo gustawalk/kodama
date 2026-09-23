@@ -28,6 +28,9 @@ import "./App.css";
 type Panel = "params" | "headers" | "auth" | "body" | "pre" | "post";
 const CodeEditor = lazy(() => import("./CodeEditor").then((module) => ({ default: module.CodeEditor })));
 type Sidebar = "requests" | "environments" | "variables" | "history";
+type ContextMenuState =
+  | { kind: "request"; x: number; y: number; requestId: string; collectionId: string }
+  | { kind: "tab"; x: number; y: number; requestId: string };
 const copy = <T,>(value: T): T => structuredClone(value);
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -225,6 +228,13 @@ function App() {
   const [responseSearch, setResponseSearch] = useState("");
   const [curlDialog, setCurlDialog] = useState(false);
   const [curlText, setCurlText] = useState("");
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = Number(localStorage.getItem("kodama.sidebarWidth"));
+    return Number.isFinite(stored) && stored > 0
+      ? Math.max(210, Math.min(540, stored))
+      : 280;
+  });
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -245,6 +255,22 @@ function App() {
       toast.error(`Could not load workspace: ${message(err)}`);
     });
   }, []);
+  useEffect(() => {
+    localStorage.setItem("kodama.sidebarWidth", String(sidebarWidth));
+  }, [sidebarWidth]);
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [contextMenu]);
   useEffect(() => {
     if (!ready) return;
     setSaved(false);
@@ -409,16 +435,74 @@ function App() {
   };
   const duplicateRequest = () => {
     if (!request || !collection) return;
-    const item = copy(request);
+    duplicateRequestById(request.id, collection.id);
+  };
+
+  const duplicateRequestById = (requestId: string, collectionId: string) => {
+    const source = findRequest(store, requestId)?.request;
+    if (!source) return;
+    const item = copy(source);
     item.id = uid();
     item.name += " copy";
     [...item.query, ...item.headers, ...item.body.fields].forEach((row) => {
       row.id = uid();
     });
-    editCollection(collection.id, (next) => {
-      next.requests.push(item);
-    });
+    editCollection(collectionId, (next) => next.requests.push(item));
     open(item.id);
+  };
+
+  const removeRequestById = (requestId: string, collectionId: string) => {
+    const target = findRequest(store, requestId)?.request;
+    if (!target) return;
+    setDeleteDialog({ name: target.name, apply: () => {
+      editCollection(collectionId, (next) => {
+        next.requests = next.requests.filter((item) => item.id !== requestId);
+      });
+      const nextTabs = tabs.filter((id) => id !== requestId);
+      setTabs(nextTabs);
+      if (selectedId === requestId) setSelectedId(nextTabs[nextTabs.length - 1] ?? null);
+    } });
+  };
+
+  const closeTab = (requestId: string) => {
+    const index = tabs.indexOf(requestId);
+    const remaining = tabs.filter((id) => id !== requestId);
+    setTabs(remaining);
+    if (selectedId === requestId) setSelectedId(remaining[Math.max(0, index - 1)] ?? null);
+  };
+
+  const closeTabsByRelation = (requestId: string, relation: "others" | "right" | "left") => {
+    const index = tabs.indexOf(requestId);
+    const remaining = tabs.filter((id, tabIndex) => relation === "others"
+      ? id === requestId
+      : relation === "right" ? tabIndex <= index : tabIndex >= index);
+    setTabs(remaining);
+    if (!remaining.includes(selectedId ?? "")) setSelectedId(requestId);
+  };
+
+  const resizeSidebar = (delta: number) => setSidebarWidth((width) =>
+    Math.max(210, Math.min(Math.min(window.innerWidth * 0.48, 540), width + delta)),
+  );
+
+  const showRequestMenu = (event: React.MouseEvent, requestId: string, collectionId: string) => {
+    event.preventDefault();
+    setContextMenu({
+      kind: "request",
+      requestId,
+      collectionId,
+      x: Math.min(event.clientX, window.innerWidth - 230),
+      y: Math.min(event.clientY, window.innerHeight - 290),
+    });
+  };
+
+  const showTabMenu = (event: React.MouseEvent, requestId: string) => {
+    event.preventDefault();
+    setContextMenu({
+      kind: "tab",
+      requestId,
+      x: Math.min(event.clientX, window.innerWidth - 220),
+      y: Math.min(event.clientY, window.innerHeight - 170),
+    });
   };
 
   async function send() {
@@ -497,14 +581,14 @@ function App() {
     setIncoming(null);
   }
 
-  if (loadError) return <div className={`app kodama-${theme}`}><div className="load-failure"><span className="brand-icon">◈</span><h1>Workspace unavailable</h1><p>{loadError}</p><button className="send" onClick={() => window.location.reload()}>Retry loading</button></div></div>;
+  if (loadError) return <div className={`app kodama-${theme}`}><div className="load-failure"><img className="brand-icon brand-logo" src="/icon.svg" alt="" /><h1>Workspace unavailable</h1><p>{loadError}</p><button className="send" onClick={() => window.location.reload()}>Retry loading</button></div></div>;
 
   return (
     <TooltipProvider><div className={`app kodama-${theme}`}>
       <Toaster theme={theme} position="bottom-right" richColors />
       <header className="topbar">
         <div className="brand">
-          <span className="brand-icon">◈</span>
+          <img className="brand-icon brand-logo" src="/icon.svg" alt="" />
           <strong>Kodama</strong>
           <small>REST workspace</small>
         </div>
@@ -523,7 +607,7 @@ function App() {
         </div>
       </header>
       <div className="workspace">
-        <aside className="sidebar">
+        <aside className="sidebar" style={{ width: sidebarWidth }}>
           <nav className="sidebar-tabs">
             {(["requests", "environments", "variables", "history"] as Sidebar[])
               .map((item) => (
@@ -617,6 +701,7 @@ function App() {
                               selectedId === value.id ? "selected" : ""
                             }`}
                             onClick={() => open(value.id)}
+                            onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
                           >
                             <span
                               className={`method ${value.method.toLowerCase()}`}
@@ -679,6 +764,7 @@ function App() {
                                 selectedId === value.id ? "selected" : ""
                               }`}
                               onClick={() => open(value.id)}
+                              onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
                             >
                               <span
                                 className={`method ${value.method.toLowerCase()}`}
@@ -897,6 +983,26 @@ function App() {
             <span>v0.1</span>
           </div>
         </aside>
+        <div
+          className="sidebar-resizer"
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            document.body.classList.add("resizing-sidebar");
+          }}
+          onPointerMove={(event) => { if (event.buttons === 1) resizeSidebar(event.movementX); }}
+          onPointerUp={() => { document.body.classList.remove("resizing-sidebar"); }}
+          onLostPointerCapture={() => { document.body.classList.remove("resizing-sidebar"); }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") { event.preventDefault(); resizeSidebar(-20); }
+            if (event.key === "ArrowRight") { event.preventDefault(); resizeSidebar(20); }
+          }}
+        />
         <main className="main">
           <div className="tabs">
             {tabs.map((id) => {
@@ -906,6 +1012,19 @@ function App() {
                   key={id}
                   className={`tab ${selectedId === id ? "active" : ""}`}
                   onClick={() => open(id)}
+                  draggable
+                  onDragStart={(event) => { event.dataTransfer.setData("text/plain", id); event.dataTransfer.effectAllowed = "move"; }}
+                  onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const from = tabs.indexOf(event.dataTransfer.getData("text/plain"));
+                    const to = tabs.indexOf(id);
+                    if (from < 0 || to < 0 || from === to) return;
+                    const reordered = [...tabs];
+                    reordered.splice(to, 0, reordered.splice(from, 1)[0]);
+                    setTabs(reordered);
+                  }}
+                  onContextMenu={(event) => showTabMenu(event, id)}
                 >
                   <span className={`method ${item.method.toLowerCase()}`}>
                     {item.method}
@@ -1357,6 +1476,35 @@ function App() {
             )}
         </main>
       </div>
+      {contextMenu && <div
+        className="context-menu"
+        role="menu"
+        style={{ left: contextMenu.x, top: contextMenu.y }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        {contextMenu.kind === "request" ? (() => {
+          const target = findRequest(store, contextMenu.requestId);
+          if (!target) return null;
+          const requestId = contextMenu.requestId;
+          const collectionId = contextMenu.collectionId;
+          return <>
+            <div className="context-menu-label">{target.request.name}</div>
+            <button role="menuitem" onClick={() => { setContextMenu(null); rename(target.request.name, (name) => editCollection(collectionId, (next) => { const found = next.requests.find((item) => item.id === requestId); if (found) found.name = name; })); }}>Rename</button>
+            <button role="menuitem" onClick={() => { duplicateRequestById(requestId, collectionId); setContextMenu(null); }}>Duplicate</button>
+            <button role="menuitem" onClick={() => { open(requestId); setContextMenu(null); }}>Open in tab</button>
+            <button role="menuitem" onClick={() => { const curl = exportCurl(target.request); void navigator.clipboard.writeText(curl).then(() => toast.success("cURL copied")).catch(() => toast.error("Could not copy cURL")); setContextMenu(null); }}>Copy cURL</button>
+            <div className="context-menu-separator" />
+            <button role="menuitem" className="danger" onClick={() => { removeRequestById(requestId, collectionId); setContextMenu(null); }}>Delete</button>
+          </>;
+        })() : <>
+          <div className="context-menu-label">{findRequest(store, contextMenu.requestId)?.request.name ?? "Request tab"}</div>
+          <button role="menuitem" onClick={() => { closeTab(contextMenu.requestId); setContextMenu(null); }}>Close</button>
+          <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "others"); setContextMenu(null); }}>Close others</button>
+          <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "right"); setContextMenu(null); }}>Close other tabs to the right</button>
+          <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "left"); setContextMenu(null); }}>Close other tabs to the left</button>
+        </>}
+      </div>}
       <Dialog open={!!incoming} onOpenChange={(open) => { if (!open) setIncoming(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Bring in this workspace?</DialogTitle><DialogDescription>

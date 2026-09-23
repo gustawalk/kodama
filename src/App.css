@@ -17,6 +17,12 @@ select,
 textarea {
   font: inherit;
 }
+input, textarea, .cm-content, .response-body, .response-headers {
+  user-select: text;
+  -webkit-user-select: text;
+}
+::selection { color: inherit; background: #9b7cff66; }
+.cm-editor .cm-selectionBackground, .cm-editor ::selection { background: #9b7cff66 !important; }
 button {
   cursor: pointer;
 }
@@ -121,6 +127,13 @@ textarea::placeholder {
   border-radius: 8px;
   font-size: 22px;
 }
+.brand-icon.brand-logo {
+  display: block;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+  object-fit: contain;
+}
 .brand small {
   font-size: 11px;
   color: var(--muted);
@@ -192,6 +205,34 @@ textarea::placeholder {
   flex-direction: column;
   min-height: 0;
 }
+.sidebar-resizer {
+  width: 5px;
+  flex: none;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  position: relative;
+  z-index: 2;
+}
+.sidebar-resizer:hover, .sidebar-resizer:focus-visible { background: #9b7cff88; outline: none; }
+body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-select: none; }
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 205px;
+  max-width: 270px;
+  padding: 5px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 12px 34px #0005;
+}
+.context-menu-label { padding: 7px 9px 8px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-menu button { display: block; width: 100%; padding: 8px 9px; text-align: left; border-radius: 5px; font-size: 12px; }
+.context-menu button:hover, .context-menu button:focus-visible { outline: none; background: var(--hover); }
+.context-menu button.danger { color: #e49797; }
+.context-menu-separator { height: 1px; margin: 4px 3px; background: var(--line); }
 .sidebar-tabs {
   display: grid;
   grid-template-columns: repeat(4,1fr);
@@ -377,7 +418,9 @@ textarea::placeholder {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
+  cursor: grab;
 }
+.tab:active { cursor: grabbing; }
 .tab.active {
   background: var(--bg);
   color: var(--text);
@@ -454,7 +497,6 @@ textarea::placeholder {
 }
 .urlbar .variable-field { height: 100%; }
 .urlbar .variable-field > input { height: 100%; }
-.urlbar .variable-references { display: none; }
 .urlbar:focus-within {
   border-color: var(--accent);
 }

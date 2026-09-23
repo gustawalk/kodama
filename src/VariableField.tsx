@@ -70,8 +70,14 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
       if (event.key === "Escape") setFocused(false);
     },
   };
+  const control = multiline ? <textarea {...common} /> : <input {...common} />;
   return <div className="variable-field">
-    {multiline ? <textarea {...common} /> : <input {...common} />}
+    {names.length ? <Tooltip>
+      <TooltipTrigger asChild>{control}</TooltipTrigger>
+      <TooltipContent className="variable-field-tooltip">
+        {[...new Set(names)].map((name) => <div key={name}><code>{`{{${name}}}`}</code><span>{variables[name]?.value || (variables[name] ? "Empty value" : "Unresolved variable")}</span></div>)}
+      </TooltipContent>
+    </Tooltip> : control}
     {!!matches.length && <div className="variable-suggestions" role="listbox" aria-label="Variables">
       {matches.map((name, index) => <Tooltip key={name}>
         <TooltipTrigger asChild><button type="button" role="option" aria-selected={selected === index}
