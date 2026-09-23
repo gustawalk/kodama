@@ -392,22 +392,6 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
 .folder-heading > button:first-child {
   color: var(--muted);
 }
-.collection-actions {
-  display: flex;
-  gap: 11px;
-  padding: 5px 10px 0;
-  opacity: 0;
-}
-.collection:hover .collection-actions {
-  opacity: 1;
-}
-.collection-actions button {
-  font-size: 10px;
-  color: var(--muted);
-}
-.collection-actions button:hover {
-  color: var(--text);
-}
 .sidebar-footer {
   height: 43px;
   flex: none;

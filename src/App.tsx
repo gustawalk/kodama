@@ -30,7 +30,9 @@ const CodeEditor = lazy(() => import("./CodeEditor").then((module) => ({ default
 type Sidebar = "requests" | "environments" | "variables" | "history";
 type ContextMenuState =
   | { kind: "request"; x: number; y: number; requestId: string; collectionId: string }
-  | { kind: "tab"; x: number; y: number; requestId: string };
+  | { kind: "tab"; x: number; y: number; requestId: string }
+  | { kind: "collection"; x: number; y: number; collectionId: string }
+  | { kind: "folder"; x: number; y: number; collectionId: string; folderId: string };
 const copy = <T,>(value: T): T => structuredClone(value);
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -566,6 +568,52 @@ function App() {
     });
   };
 
+  const showCollectionMenu = (event: React.MouseEvent, collectionId: string) => {
+    event.preventDefault();
+    setContextMenu({ kind: "collection", collectionId, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 230)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
+  };
+
+  const showFolderMenu = (event: React.MouseEvent, collectionId: string, folderId: string) => {
+    event.preventDefault();
+    setContextMenu({ kind: "folder", collectionId, folderId, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 230)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 220)) });
+  };
+
+  const deleteCollectionById = (collectionId: string) => {
+    const target = store.collections.find((item) => item.id === collectionId);
+    if (!target) return;
+    const requestIds = new Set(target.requests.map((item) => item.id));
+    setDeleteDialog({ name: target.name, apply: () => {
+      editStore((next) => { next.collections = next.collections.filter((item) => item.id !== collectionId); });
+      const remainingTabs = tabs.filter((id) => !requestIds.has(id));
+      setTabs(remainingTabs);
+      if (selectedId && requestIds.has(selectedId)) setSelectedId(remainingTabs[remainingTabs.length - 1] ?? null);
+    } });
+  };
+
+  const deleteFolderById = (collectionId: string, folderId: string) => {
+    const target = store.collections.find((item) => item.id === collectionId);
+    const folder = target?.folders.find((item) => item.id === folderId);
+    if (!target || !folder) return;
+    const folderIds = new Set([folderId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      target.folders.forEach((item) => {
+        if (item.parentId && folderIds.has(item.parentId) && !folderIds.has(item.id)) { folderIds.add(item.id); changed = true; }
+      });
+    }
+    const requestIds = new Set(target.requests.filter((item) => item.folderId && folderIds.has(item.folderId)).map((item) => item.id));
+    setDeleteDialog({ name: `${folder.name} and its contents`, apply: () => {
+      editCollection(collectionId, (next) => {
+        next.folders = next.folders.filter((item) => !folderIds.has(item.id));
+        next.requests = next.requests.filter((item) => !requestIds.has(item.id));
+      });
+      const remainingTabs = tabs.filter((id) => !requestIds.has(id));
+      setTabs(remainingTabs);
+      if (selectedId && requestIds.has(selectedId)) setSelectedId(remainingTabs[remainingTabs.length - 1] ?? null);
+    } });
+  };
+
   async function send() {
     if (!request || !collection || busy) return;
     setBusy(true);
@@ -736,6 +784,7 @@ function App() {
                   return <div className={`folder-node${depth ? " child-folder" : ""}`} key={folder.id}>
                     <div
                       className={`folder-heading${dragOverId === targetId ? " drop-target" : ""}`}
+                      onContextMenu={(event) => showFolderMenu(event, item.id, folder.id)}
                       onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move"; setDragOverId(targetId); }}
                       onDragLeave={() => setDragOverId(null)}
                       onDrop={(event) => moveRequestTo(event, item.id, folder.id)}
@@ -752,20 +801,6 @@ function App() {
                       </button>
                       <button className="icon" title="New request in folder" onClick={() => addRequest(item.id, folder.id)}>＋</button>
                       <button className="icon" title="New subfolder" onClick={() => editCollection(item.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id }))}>▣</button>
-                      <button className="icon" title="Delete folder" onClick={() => {
-                        setDeleteDialog({ name: `${folder.name} and its contents`, apply: () => editCollection(item.id, (next) => {
-                          const deleting = new Set([folder.id]);
-                          let changed = true;
-                          while (changed) {
-                            changed = false;
-                            next.folders.forEach((child) => {
-                              if (child.parentId && deleting.has(child.parentId) && !deleting.has(child.id)) { deleting.add(child.id); changed = true; }
-                            });
-                          }
-                          next.folders = next.folders.filter((value) => !deleting.has(value.id));
-                          next.requests = next.requests.filter((value) => !value.folderId || !deleting.has(value.folderId));
-                        }) });
-                      }}>×</button>
                     </div>
                     {!isCollapsed && <>
                       {requests.filter((value) => value.folderId === folder.id).map((value) => requestRow(value, depth + 1))}
@@ -795,6 +830,7 @@ function App() {
                       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverId(`root:${item.id}`); }}
                       onDragLeave={() => setDragOverId(null)}
                       onDrop={(event) => moveRequestTo(event, item.id, null)}
+                      onContextMenu={(event) => showCollectionMenu(event, item.id)}
                     >
                       {collapsed.includes(item.id) ? "▸" : "▾"} {item.name}
                     </button>
@@ -826,30 +862,6 @@ function App() {
                       {rootFolders.map((folder) => renderFolder(folder))}
                     </>
                   )}
-                  <div className="collection-actions">
-                    <button
-                      onClick={() =>
-                        rename(item.name, (name) =>
-                          editCollection(item.id, (next) => {
-                            next.name = name;
-                          }))}
-                    >
-                      Rename
-                    </button>
-                    <button
-                      onClick={() => {
-                        setDeleteDialog({ name: item.name, apply: () => {
-                          editStore((next) => {
-                            next.collections = next.collections.filter(
-                              (value) => value.id !== item.id,
-                            );
-                          });
-                        } });
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
                 </div>;
               })}
             </div>
@@ -1556,20 +1568,50 @@ function App() {
             <div className="context-menu-separator" />
             <button role="menuitem" className="danger" onClick={() => { removeRequestById(requestId, collectionId); setContextMenu(null); }}>Delete</button>
           </>;
-        })() : <>
+        })() : contextMenu.kind === "tab" ? <>
           <div className="context-menu-label">{findRequest(store, contextMenu.requestId)?.request.name ?? "Request tab"}</div>
           <button role="menuitem" onClick={() => { closeTab(contextMenu.requestId); setContextMenu(null); }}>Close</button>
           <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "others"); setContextMenu(null); }}>Close others</button>
           <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "right"); setContextMenu(null); }}>Close other tabs to the right</button>
           <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "left"); setContextMenu(null); }}>Close other tabs to the left</button>
-        </>}
+        </> : contextMenu.kind === "folder" ? (() => {
+          const collectionId = contextMenu.collectionId;
+          const folder = store.collections.find((item) => item.id === collectionId)?.folders.find((item) => item.id === contextMenu.folderId);
+          if (!folder) return null;
+          return <>
+            <div className="context-menu-label">Folder · {folder.name}</div>
+            <button role="menuitem" onClick={() => { setContextMenu(null); rename(folder.name, (name) => editCollection(collectionId, (next) => { const target = next.folders.find((item) => item.id === folder.id); if (target) target.name = name; })); }}>Rename</button>
+            <button role="menuitem" onClick={() => { addRequest(collectionId, folder.id); setCollapsed((previous) => previous.filter((id) => id !== collectionId && id !== folder.id)); setContextMenu(null); }}>New request</button>
+            <button role="menuitem" onClick={() => { editCollection(collectionId, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id })); setCollapsed((previous) => previous.filter((id) => id !== collectionId && id !== folder.id)); setContextMenu(null); }}>New subfolder</button>
+            <div className="context-menu-separator" />
+            <button role="menuitem" className="danger" onClick={() => { deleteFolderById(collectionId, folder.id); setContextMenu(null); }}>Delete folder</button>
+          </>;
+        })() : (() => {
+          const target = store.collections.find((item) => item.id === contextMenu.collectionId);
+          if (!target) return null;
+          return <>
+            <div className="context-menu-label">Collection · {target.name}</div>
+            <button role="menuitem" onClick={() => { setContextMenu(null); rename(target.name, (name) => editCollection(target.id, (next) => { next.name = name; })); }}>Rename</button>
+            <button role="menuitem" onClick={() => { addRequest(target.id); setContextMenu(null); }}>New request</button>
+            <button role="menuitem" onClick={() => { editCollection(target.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: null })); setContextMenu(null); }}>New folder</button>
+            <div className="context-menu-separator" />
+            <button role="menuitem" className="danger" onClick={() => { deleteCollectionById(target.id); setContextMenu(null); }}>Delete collection</button>
+          </>;
+        })()}
       </div>}
       <Dialog open={!!incoming} onOpenChange={(open) => { if (!open) setIncoming(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Bring in this workspace?</DialogTitle><DialogDescription>
-            {incoming?.collections.length ?? 0} collections and {incoming?.environments.length ?? 0} environments. Imported scripts stay disabled until you review and trust each request.
+            {incoming?.collections.length ?? 0} {(incoming?.collections.length ?? 0) === 1 ? "collection" : "collections"} and {incoming?.environments.length ?? 0} {(incoming?.environments.length ?? 0) === 1 ? "environment" : "environments"}. Imported scripts stay disabled until you review and trust each request.
           </DialogDescription></DialogHeader>
-          <p className="hint">Merge will skip {incoming ? mergeWorkspace(store, incoming).skipped : 0} items with colliding UUIDs. Replace removes the current workspace.</p>
+          <p className="hint">
+            {(() => {
+              const skipped = incoming ? mergeWorkspace(store, incoming).skipped : 0;
+              return skipped
+                ? `Merge will skip ${skipped} imported ${skipped === 1 ? "item" : "items"} because their IDs already exist. If this is a backup you want to restore, choose Replace.`
+                : "Merge adds the imported items to your current workspace. Replace removes the current workspace and restores this import.";
+            })()}
+          </p>
           <DialogFooter><button className="subtle" onClick={() => setIncoming(null)}>Cancel</button><button className="subtle" onClick={() => applyImport("merge")}>Merge</button><button className="send" onClick={() => applyImport("replace")}>Replace</button></DialogFooter>
         </DialogContent>
       </Dialog>
