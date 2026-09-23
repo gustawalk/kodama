@@ -1,5 +1,13 @@
 use crate::model::{Store, FORMAT_VERSION};
-use std::{collections::HashSet, fs, path::PathBuf};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::{
+    collections::HashSet,
+    fs,
+    fs::OpenOptions,
+    io::Write,
+    path::{Path, PathBuf},
+};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
@@ -7,6 +15,8 @@ use uuid::Uuid;
 fn data_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
     Ok(dir.join("kodama.json"))
 }
 
@@ -109,13 +119,25 @@ pub fn load_store(app: AppHandle) -> Result<Store, String> {
 }
 
 #[tauri::command]
-pub fn save_store(app: AppHandle, mut store: Store) -> Result<(), String> {
+pub fn save_store(app: AppHandle, store: Store) -> Result<(), String> {
     validate(&store)?;
-    scrub_secrets(&mut store);
     let path = data_path(&app)?;
+    write_local_store(&path, &store)
+}
+
+fn write_local_store(path: &Path, store: &Store) -> Result<(), String> {
     let temp = path.with_extension("json.tmp");
     let data = serde_json::to_vec_pretty(&store).map_err(|e| e.to_string())?;
-    fs::write(&temp, data).map_err(|e| e.to_string())?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&temp)
+        .map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    fs::set_permissions(&temp, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    file.write_all(&data).map_err(|e| e.to_string())?;
+    file.sync_all().map_err(|e| e.to_string())?;
     fs::rename(&temp, &path).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -175,6 +197,28 @@ pub fn export_store(app: AppHandle, mut store: Store) -> Result<bool, String> {
 mod tests {
     use super::*;
     use crate::model::{Collection, Environment, Variable};
+
+    #[test]
+    fn local_save_retains_secret_values_across_reload() {
+        let path =
+            std::env::temp_dir().join(format!("kodama-storage-test-{}.json", Uuid::new_v4()));
+        let mut store = Store::default();
+        store.defaults.push(Variable {
+            id: Uuid::new_v4().to_string(),
+            name: "TOKEN".into(),
+            value: "persistent-token".into(),
+            secret: true,
+        });
+        write_local_store(&path, &store).unwrap();
+        let loaded: Store = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(loaded.defaults[0].value, "persistent-token");
+        #[cfg(unix)]
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn export_shape_keeps_structure_but_drops_secrets() {
