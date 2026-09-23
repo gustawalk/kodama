@@ -56,6 +56,8 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
   const matches = useMemo(() => active
     ? Object.keys(variables).filter((name) => name.toLowerCase().includes(active.query)).sort().slice(0, 100)
     : [], [active?.query, variables]);
+  const hasUnresolved = [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)]
+    .some((match) => !variables[match[1].trim()]);
   const choose = (name: string) => {
     if (!active) return;
     const suffix = value.slice(caret).startsWith("}}") ? 2 : 0;
@@ -74,7 +76,8 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
     "aria-label": label,
     value,
     placeholder,
-    className,
+    className: [className, hasUnresolved && "unresolved-variable-field"].filter(Boolean).join(" "),
+    "aria-invalid": hasUnresolved || undefined,
     spellCheck,
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       onChange(event.target.value);
@@ -104,7 +107,7 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
     {hoveredVariable && <div
       className={`variable-hover-tooltip${hoveredValue ? "" : " missing"}`}
       role="tooltip"
-      style={{ left: Math.max(8, Math.min(hoveredVariable.x + 12, window.innerWidth - 310)), top: Math.max(8, Math.min(hoveredVariable.y + 14, window.innerHeight - 105)) }}
+      style={{ left: Math.max(8, Math.min(hoveredVariable.x + 14, window.innerWidth - 400)), top: Math.max(8, Math.min(hoveredVariable.y + 16, window.innerHeight - 130)) }}
     >
       <code>{`{{${hoveredVariable.name}}}`}</code>
       {hoveredValue
