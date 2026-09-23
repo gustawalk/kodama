@@ -625,9 +625,10 @@ function App() {
   }
   async function exportFile() {
     try {
-      await invoke("export_store", { store });
+      const exported = await invoke<boolean>("export_store", { store });
+      if (exported) toast.success("Workspace exported");
     } catch (err) {
-      setError(message(err));
+      toast.error(`Could not export workspace: ${message(err)}`);
     }
   }
   function applyImport(mode: "merge" | "replace") {

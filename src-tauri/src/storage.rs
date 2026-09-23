@@ -10,6 +10,7 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 fn data_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -143,13 +144,15 @@ fn write_local_store(path: &Path, store: &Store) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn import_store(app: AppHandle) -> Result<Option<Store>, String> {
-    let Some(path) = app
-        .dialog()
+pub async fn import_store(app: AppHandle) -> Result<Option<Store>, String> {
+    let (sender, receiver) = oneshot::channel();
+    app.dialog()
         .file()
         .add_filter("Kodama JSON", &["json"])
-        .blocking_pick_file()
-    else {
+        .pick_file(move |path| {
+            let _ = sender.send(path);
+        });
+    let Some(path) = receiver.await.map_err(|_| "Open dialog failed")? else {
         return Ok(None);
     };
     let data =
@@ -171,7 +174,7 @@ pub fn import_store(app: AppHandle) -> Result<Option<Store>, String> {
 }
 
 #[tauri::command]
-pub fn export_store(app: AppHandle, mut store: Store) -> Result<bool, String> {
+pub async fn export_store(app: AppHandle, mut store: Store) -> Result<bool, String> {
     validate(&store)?;
     scrub_secrets(&mut store);
     for collection in &mut store.collections {
@@ -179,13 +182,15 @@ pub fn export_store(app: AppHandle, mut store: Store) -> Result<bool, String> {
             request.trusted = false;
         }
     }
-    let Some(path) = app
-        .dialog()
+    let (sender, receiver) = oneshot::channel();
+    app.dialog()
         .file()
         .add_filter("Kodama JSON", &["json"])
         .set_file_name("kodama-export.json")
-        .blocking_save_file()
-    else {
+        .save_file(move |path| {
+            let _ = sender.send(path);
+        });
+    let Some(path) = receiver.await.map_err(|_| "Save dialog failed")? else {
         return Ok(false);
     };
     let bytes = serde_json::to_vec_pretty(&store).map_err(|e| e.to_string())?;
