@@ -11,7 +11,12 @@ function words(command: string): string[] {
       if (started) { result.push(current); current = ""; started = false; }
     } else if (char === "'" && quote !== '"') { quote = quote === "'" ? "" : "'"; started = true; }
     else if (char === '"' && quote !== "'") { quote = quote === '"' ? "" : '"'; started = true; }
-    else if (char === "\\" && quote !== "'" && i + 1 < command.length) { current += command[++i]; started = true; }
+    else if (char === "\\" && quote !== "'" && i + 1 < command.length) {
+      if (command[i + 1] === "\n") { i++; continue; }
+      if (command[i + 1] === "\r" && command[i + 2] === "\n") { i += 2; continue; }
+      current += command[++i];
+      started = true;
+    }
     else { current += char; started = true; }
   }
   if (quote) throw new Error("Unclosed quote in cURL command");
