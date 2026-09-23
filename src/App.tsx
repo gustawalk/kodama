@@ -179,13 +179,16 @@ function VariableEditor(
             onChange={(event) => edit(row.id, "value", event.target.value)}
           />
           <button className="icon" aria-label={shown.includes(row.id) ? "Hide variable value" : "Show variable value"} title={shown.includes(row.id) ? "Hide value" : "Show value"} onClick={() => setShown((previous) => previous.includes(row.id) ? previous.filter((id) => id !== row.id) : [...previous, row.id])}>◉</button>
-          <label>
+          <label className="secret-toggle" title="Secret values stay hidden in variable editors">
             <input
               type="checkbox"
+              role="switch"
+              aria-label={`Secret variable ${row.name || "unnamed"}`}
               checked={row.secret}
               onChange={(event) => edit(row.id, "secret", event.target.checked)}
-            />{" "}
-            Secret
+            />
+            <span className="secret-toggle-track" aria-hidden="true"><span /></span>
+            <span>Secret</span>
           </label>
           <button
             className="icon"
@@ -226,7 +229,9 @@ function App() {
     { id: string; name: string; method: string; status: number; time: number }[]
   >([]);
   const [incoming, setIncoming] = useState<Store | null>(null);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">(() =>
+    localStorage.getItem("kodama.theme") === "light" ? "light" : "dark"
+  );
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [renameDialog, setRenameDialog] = useState<{ name: string; apply: (name: string) => void } | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -245,6 +250,7 @@ function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
+    localStorage.setItem("kodama.theme", theme);
     return () => document.documentElement.classList.remove("dark");
   }, [theme]);
 
