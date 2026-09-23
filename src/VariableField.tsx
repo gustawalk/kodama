@@ -23,17 +23,39 @@ function activeReference(value: string, caret: number) {
   return { start, query: query.trim().toLowerCase() };
 }
 
+function referenceAtPointer(field: HTMLInputElement | HTMLTextAreaElement, value: string, clientX: number) {
+  const style = window.getComputedStyle(field);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.font = style.font;
+  const target = clientX - field.getBoundingClientRect().left - Number.parseFloat(style.paddingLeft) + field.scrollLeft;
+  const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+  let width = 0;
+  let offset = 0;
+  for (let index = 0; index < value.length; index++) {
+    const charWidth = context.measureText(value[index]).width + letterSpacing;
+    if (target <= width + charWidth / 2) { offset = index; break; }
+    width += charWidth;
+    offset = index + 1;
+  }
+  for (const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+    const start = match.index ?? 0;
+    if (offset >= start && offset < start + match[0].length) return match[1].trim();
+  }
+  return null;
+}
+
 export function VariableField({ value, onChange, variables, label, placeholder, className, multiline, spellCheck }: Props) {
   const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const [selected, setSelected] = useState(0);
+  const [hoveredVariable, setHoveredVariable] = useState<{ name: string; x: number; y: number } | null>(null);
   const active = focused ? activeReference(value, caret) : null;
   const matches = useMemo(() => active
     ? Object.keys(variables).filter((name) => name.toLowerCase().includes(active.query)).sort().slice(0, 100)
     : [], [active?.query, variables]);
-  const names = [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((match) => match[1].trim());
-
   const choose = (name: string) => {
     if (!active) return;
     const suffix = value.slice(caret).startsWith("}}") ? 2 : 0;
@@ -60,6 +82,11 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
       setSelected(0);
     },
     onClick: (event: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>) => setCaret(event.currentTarget.selectionStart ?? 0),
+    onMouseMove: (event: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const name = referenceAtPointer(event.currentTarget, value, event.clientX);
+      setHoveredVariable(name ? { name, x: event.clientX, y: event.clientY } : null);
+    },
+    onMouseLeave: () => setHoveredVariable(null),
     onFocus: () => setFocused(true),
     onBlur: () => window.setTimeout(() => setFocused(false), 120),
     onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -71,13 +98,19 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
     },
   };
   const control = multiline ? <textarea {...common} /> : <input {...common} />;
+  const hoveredValue = hoveredVariable ? variables[hoveredVariable.name] : undefined;
   return <div className="variable-field">
-    {names.length ? <Tooltip>
-      <TooltipTrigger asChild>{control}</TooltipTrigger>
-      <TooltipContent className="variable-field-tooltip">
-        {[...new Set(names)].map((name) => <div key={name}><code>{`{{${name}}}`}</code><span>{variables[name]?.value || (variables[name] ? "Empty value" : "Unresolved variable")}</span></div>)}
-      </TooltipContent>
-    </Tooltip> : control}
+    {control}
+    {hoveredVariable && <div
+      className={`variable-hover-tooltip${hoveredValue ? "" : " missing"}`}
+      role="tooltip"
+      style={{ left: Math.max(8, Math.min(hoveredVariable.x + 12, window.innerWidth - 310)), top: Math.max(8, Math.min(hoveredVariable.y + 14, window.innerHeight - 105)) }}
+    >
+      <code>{`{{${hoveredVariable.name}}}`}</code>
+      {hoveredValue
+        ? <div><small>VALUE</small><span>{hoveredValue.value || "Empty value"}</span></div>
+        : <div className="variable-hover-warning"><strong><span aria-hidden="true">⚠</span> Unresolved</strong><small>Not defined in the available variables</small></div>}
+    </div>}
     {!!matches.length && <div className="variable-suggestions" role="listbox" aria-label="Variables">
       {matches.map((name, index) => <Tooltip key={name}>
         <TooltipTrigger asChild><button type="button" role="option" aria-selected={selected === index}

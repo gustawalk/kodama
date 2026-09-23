@@ -45,8 +45,23 @@ export function CodeEditor({ value, onChange, language, label, variables, theme 
           const variable = variables[match[1].trim()];
           return { pos: from, end: to, create: () => {
             const dom = document.createElement("div");
-            dom.className = "code-variable-tooltip";
-            dom.textContent = variable ? `${match[1].trim()} · ${variable.value || "Empty value"}` : "Unresolved variable";
+            dom.className = `code-variable-tooltip${variable ? "" : " missing"}`;
+            const name = document.createElement("code");
+            name.textContent = `{{${match[1].trim()}}}`;
+            dom.append(name);
+            if (variable) {
+              const label = document.createElement("small");
+              label.textContent = "RESOLVED VALUE";
+              const value = document.createElement("span");
+              value.textContent = variable.value || "Empty value";
+              dom.append(label, value);
+            } else {
+              const warning = document.createElement("strong");
+              warning.textContent = "⚠ Unresolved variable";
+              const hint = document.createElement("span");
+              hint.textContent = "Define it in defaults, the collection, or the active environment.";
+              dom.append(warning, hint);
+            }
             return { dom };
           } };
         }
