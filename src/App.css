@@ -465,6 +465,8 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
   color: var(--muted);
   font-size: 11px;
 }
+.environment-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--muted); }
+.environment-dot.active { background: #42bf87; box-shadow: 0 0 0 2px color-mix(in srgb, #42bf87 15%, transparent); }
 .active-env strong {
   color: var(--accent);
   font-weight: 600;

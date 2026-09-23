@@ -83,6 +83,12 @@ function mergeWorkspace(current: Store, imported: Store) {
   return { next, skipped };
 }
 
+function withDefaultEnvironment(store: Store): Store {
+  const hasSelection = store.environments.some((item) => item.id === store.activeEnvironmentId);
+  if (hasSelection || !store.environments.length) return store;
+  return { ...store, activeEnvironmentId: store.environments[0].id };
+}
+
 function Entries(
   { rows, onChange, name, variables }: {
     rows: Entry[];
@@ -243,7 +249,7 @@ function App() {
 
   useEffect(() => {
     invoke<Store>("load_store").then((data) => {
-      const next = data.collections.length ? data : demoStore();
+      const next = withDefaultEnvironment(data.collections.length ? data : demoStore());
       setStore(next);
       const id = next.collections[0]?.requests[0]?.id ?? null;
       setSelectedId(id);
@@ -577,10 +583,10 @@ function App() {
   function applyImport(mode: "merge" | "replace") {
     if (!incoming) return;
     if (mode === "replace") {
-      setStore(incoming);
+      setStore(withDefaultEnvironment(incoming));
       setSelectedId(incoming.collections[0]?.requests[0]?.id ?? null);
       setTabs([]);
-    } else setStore(mergeWorkspace(store, incoming).next);
+    } else setStore(withDefaultEnvironment(mergeWorkspace(store, incoming).next));
     setRuntime({});
     setResponse(null);
     setIncoming(null);
@@ -824,6 +830,9 @@ function App() {
                         name: "New environment",
                         variables: [],
                       });
+                      if (!next.activeEnvironmentId) {
+                        next.activeEnvironmentId = next.environments[next.environments.length - 1].id;
+                      }
                     })}
                 >
                   ＋
@@ -870,7 +879,7 @@ function App() {
                               value.id !== item.id,
                           );
                           if (next.activeEnvironmentId === item.id) {
-                            next.activeEnvironmentId = null;
+                            next.activeEnvironmentId = next.environments[0]?.id ?? null;
                           }
                         })}
                     >
@@ -1055,7 +1064,8 @@ function App() {
             })}
             <div className="tab-fill"></div>
             <div className="active-env">
-              Environment <strong>{environment?.name ?? "None"}</strong>
+              <span className={`environment-dot ${environment ? "active" : ""}`} aria-hidden="true" />
+              <strong>{environment?.name ?? "No environment"}</strong>
             </div>
           </div>
           {request && collection
