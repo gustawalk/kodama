@@ -41,14 +41,22 @@ bun run tauri build
 - HTTP methods, URL and query parameters, enabled headers, Basic and Bearer
   auth, JSON/text bodies, URL-encoded forms, and text multipart fields.
 - Response status, headers, formatted JSON/text, timing, size, and binary
-  download.
+  download. Search and copy response text, and inspect session cookies.
 - Per-request timeout (30 seconds by default), up to ten redirects, and normal
   TLS certificate verification.
 - Pre-request and post-response JavaScript scripts with limited APIs and runtime
   variables.
 - Environments, collection variables, global defaults, and a variable inspector.
+- Variable suggestions appear while typing `{{...}}`; ten are visible before
+  scrolling. Hover a suggestion or variable to see its value.
+- JSON is the default body mode for new requests. The body and script editors
+  use CodeMirror for syntax highlighting, indentation with Tab, and JSON
+  diagnostics. Empty JSON bodies send no body. Use **Format JSON** to pretty-print.
 - Versioned Kodama JSON import/export with merge or replace. Imported scripts
   remain disabled until individually trusted.
+- Import common cURL commands and copy a saved request as cURL.
+- A session cookie jar carries cookies between requests and can be cleared from
+  the response Cookies tab.
 - Local autosave and light/dark themes. Press Ctrl/Cmd+Enter to send and
   Ctrl/Cmd+S to save.
 
@@ -91,9 +99,15 @@ and trust the imported Login script, then run Login to populate the new
 session's `_.TOKEN`.
 
 Runtime variables are session-only and are never exported. Values marked
-**Secret** are masked and stripped from local saves and exports; enter them
-again after reopening Kodama. Literal Basic passwords, Bearer tokens, and
-Authorization/Cookie header values are also stripped from saves and exports.
+**Secret** are masked in the editor until revealed, but persist in the local
+workspace file across restarts. Literal Basic passwords, Bearer tokens, and
+Authorization/Cookie header values also persist locally. Local data is stored
+as plain JSON in your user profile; on Unix, Kodama restricts its app-data
+directory to your user and the workspace file to mode `0600`.
+
+Exports omit marked secret values and literal Basic passwords, Bearer tokens,
+and Authorization/Cookie header values. These values must be entered after
+importing on another computer.
 Variable references in those fields are preserved. Other request text and
 scripts can contain user-entered sensitive content and are exported as written,
 so inspect a file before sharing it.
@@ -106,9 +120,9 @@ uses the imported workspace. Imported scripts never execute during import.
 ## Current limits
 
 The MVP covers REST over HTTP/HTTPS. It does not yet provide GraphQL, gRPC,
-WebSocket, cloud sync, Postman file compatibility, cookie jar management, proxy
-settings, multipart file attachments, or an operating-system keychain. On this
-release, secret values must be re-entered after restart. The script engine has
+WebSocket, cloud sync, Postman file compatibility, proxy settings, or multipart
+file attachments. The cookie jar and request history last for the app session.
+The script engine has
 operation/size limits but no hard wall-clock kill for every possible JavaScript
 expression. Native builds are verified on Linux; Windows and macOS builds
 require their respective hosts and Tauri prerequisites.
