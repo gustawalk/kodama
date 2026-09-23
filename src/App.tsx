@@ -241,6 +241,7 @@ function App() {
       : 280;
   });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -443,6 +444,49 @@ function App() {
         ];
       }
     });
+  };
+
+  const startRequestDrag = (event: React.DragEvent, requestId: string, collectionId: string) => {
+    event.dataTransfer.setData("application/x-kodama-request", JSON.stringify({ requestId, collectionId }));
+    event.dataTransfer.effectAllowed = "move";
+  };
+
+  const moveRequestTo = (
+    event: React.DragEvent,
+    targetCollectionId: string,
+    targetFolderId: string | null,
+    anchorRequestId?: string,
+    insertAfter = false,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverId(null);
+    try {
+      const source = JSON.parse(event.dataTransfer.getData("application/x-kodama-request")) as { requestId: string; collectionId: string };
+      editStore((next) => {
+        const sourceCollection = next.collections.find((item) => item.id === source.collectionId);
+        const targetCollection = next.collections.find((item) => item.id === targetCollectionId);
+        if (!sourceCollection || !targetCollection || source.requestId === anchorRequestId) return;
+        const sourceIndex = sourceCollection.requests.findIndex((item) => item.id === source.requestId);
+        if (sourceIndex < 0) return;
+        const [moving] = sourceCollection.requests.splice(sourceIndex, 1);
+        moving.folderId = targetFolderId;
+        let insertAt = -1;
+        if (anchorRequestId) {
+          const anchorIndex = targetCollection.requests.findIndex((item) => item.id === anchorRequestId);
+          if (anchorIndex >= 0) insertAt = anchorIndex + (insertAfter ? 1 : 0);
+        }
+        if (insertAt < 0) {
+          for (let index = 0; index < targetCollection.requests.length; index++) {
+            if (targetCollection.requests[index].folderId === targetFolderId) insertAt = index + 1;
+          }
+          if (insertAt < 0) insertAt = targetCollection.requests.length;
+        }
+        targetCollection.requests.splice(insertAt, 0, moving);
+      });
+    } catch {
+      // Ignore drops without a Kodama request payload.
+    }
   };
   const duplicateRequest = () => {
     if (!request || !collection) return;
@@ -659,11 +703,75 @@ function App() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
-              {visibleCollections.map(({ item, requests }) => (
-                <div className="collection" key={item.id}>
+              {visibleCollections.map(({ item, requests }) => {
+                const requestRow = (value: ApiRequest, depth = 0) => (
+                  <button
+                    key={value.id}
+                    draggable
+                    className={`request-link${depth ? " nested" : ""}${selectedId === value.id ? " selected" : ""}${dragOverId === `request:${value.id}` ? " drop-target" : ""}`}
+                    onClick={() => open(value.id)}
+                    onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
+                    onDragStart={(event) => startRequestDrag(event, value.id, item.id)}
+                    onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverId(`request:${value.id}`); }}
+                    onDragLeave={() => setDragOverId(null)}
+                    onDrop={(event) => {
+                      const insertAfter = event.clientY >= event.currentTarget.getBoundingClientRect().top + event.currentTarget.getBoundingClientRect().height / 2;
+                      moveRequestTo(event, item.id, value.folderId, value.id, insertAfter);
+                    }}
+                  >
+                    <span className={`method ${value.method.toLowerCase()}`}>{value.method}</span>
+                    <span>{value.name}</span>
+                  </button>
+                );
+                const renderFolder = (folder: typeof item.folders[number], depth = 0): React.ReactNode => {
+                  const targetId = `folder:${item.id}:${folder.id}`;
+                  const isCollapsed = collapsed.includes(folder.id);
+                  return <div className={`folder-node${depth ? " child-folder" : ""}`} key={folder.id}>
+                    <div
+                      className={`folder-heading${dragOverId === targetId ? " drop-target" : ""}`}
+                      onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move"; setDragOverId(targetId); }}
+                      onDragLeave={() => setDragOverId(null)}
+                      onDrop={(event) => moveRequestTo(event, item.id, folder.id)}
+                    >
+                      <button
+                        aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${folder.name}`}
+                        onClick={() => setCollapsed((previous) => previous.includes(folder.id) ? previous.filter((id) => id !== folder.id) : [...previous, folder.id])}
+                        onDoubleClick={() => rename(folder.name, (name) => editCollection(item.id, (next) => {
+                          const found = next.folders.find((value) => value.id === folder.id);
+                          if (found) found.name = name;
+                        }))}
+                      >
+                        {isCollapsed ? "▸" : "▾"} {folder.name}
+                      </button>
+                      <button className="icon" title="New request in folder" onClick={() => addRequest(item.id, folder.id)}>＋</button>
+                      <button className="icon" title="New subfolder" onClick={() => editCollection(item.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id }))}>▣</button>
+                      <button className="icon" title="Delete folder" onClick={() => {
+                        setDeleteDialog({ name: `${folder.name} and its contents`, apply: () => editCollection(item.id, (next) => {
+                          const deleting = new Set([folder.id]);
+                          let changed = true;
+                          while (changed) {
+                            changed = false;
+                            next.folders.forEach((child) => {
+                              if (child.parentId && deleting.has(child.parentId) && !deleting.has(child.id)) { deleting.add(child.id); changed = true; }
+                            });
+                          }
+                          next.folders = next.folders.filter((value) => !deleting.has(value.id));
+                          next.requests = next.requests.filter((value) => !value.folderId || !deleting.has(value.folderId));
+                        }) });
+                      }}>×</button>
+                    </div>
+                    {!isCollapsed && <>
+                      {requests.filter((value) => value.folderId === folder.id).map((value) => requestRow(value, depth + 1))}
+                      {item.folders.filter((value) => value.parentId === folder.id).map((child) => renderFolder(child, depth + 1))}
+                    </>}
+                  </div>;
+                };
+                const folderIds = new Set(item.folders.map((folder) => folder.id));
+                const rootFolders = item.folders.filter((folder) => !folder.parentId || !folderIds.has(folder.parentId));
+                return <div className="collection" key={item.id}>
                   <div className="collection-heading">
                     <button
-                      className="collection-name"
+                      className={`collection-name${dragOverId === `root:${item.id}` ? " drop-target" : ""}`}
                       onClick={() =>
                         setCollapsed((previous) =>
                           previous.includes(item.id)
@@ -677,6 +785,9 @@ function App() {
                           editCollection(item.id, (next) => {
                             next.name = name;
                           }))}
+                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverId(`root:${item.id}`); }}
+                      onDragLeave={() => setDragOverId(null)}
+                      onDrop={(event) => moveRequestTo(event, item.id, null)}
                     >
                       {collapsed.includes(item.id) ? "▸" : "▾"} {item.name}
                     </button>
@@ -704,89 +815,8 @@ function App() {
                   </div>
                   {!collapsed.includes(item.id) && (
                     <>
-                      {requests.filter((value) => !value.folderId).map(
-                        (value) => (
-                          <button
-                            key={value.id}
-                            className={`request-link ${
-                              selectedId === value.id ? "selected" : ""
-                            }`}
-                            onClick={() => open(value.id)}
-                            onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
-                          >
-                            <span
-                              className={`method ${value.method.toLowerCase()}`}
-                            >
-                              {value.method}
-                            </span>
-                            <span>{value.name}</span>
-                          </button>
-                        ),
-                      )}
-                      {item.folders.map((folder) => (
-                        <div key={folder.id}>
-                          <div className="folder-heading">
-                            <button
-                              onDoubleClick={() =>
-                                rename(folder.name, (name) =>
-                                  editCollection(item.id, (next) => {
-                                    const found = next.folders.find((value) =>
-                                      value.id === folder.id
-                                    );
-                                    if (found) found.name = name;
-                                  }))}
-                            >
-                              ▾ {folder.name}
-                            </button>
-                            <button
-                              className="icon"
-                              title="New request in folder"
-                              onClick={() =>
-                                addRequest(item.id, folder.id)}
-                            >
-                              ＋
-                            </button>
-                            <button
-                              className="icon"
-                              title="Delete folder"
-                              onClick={() => {
-                                setDeleteDialog({ name: `${folder.name} and its requests`, apply: () => {
-                                  editCollection(item.id, (next) => {
-                                    next.folders = next.folders.filter(
-                                      (value) => value.id !== folder.id,
-                                    );
-                                    next.requests = next.requests.filter(
-                                      (value) =>
-                                        value.folderId !== folder.id,
-                                    );
-                                  });
-                                } });
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
-                          {requests.filter((value) =>
-                            value.folderId === folder.id
-                          ).map((value) => (
-                            <button
-                              key={value.id}
-                              className={`request-link nested ${
-                                selectedId === value.id ? "selected" : ""
-                              }`}
-                              onClick={() => open(value.id)}
-                              onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
-                            >
-                              <span
-                                className={`method ${value.method.toLowerCase()}`}
-                              >
-                                {value.method}
-                              </span>
-                              <span>{value.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      ))}
+                      {requests.filter((value) => !value.folderId).map((value) => requestRow(value))}
+                      {rootFolders.map((folder) => renderFolder(folder))}
                     </>
                   )}
                   <div className="collection-actions">
@@ -813,8 +843,8 @@ function App() {
                       Delete
                     </button>
                   </div>
-                </div>
-              ))}
+                </div>;
+              })}
             </div>
           )}
           {sidebar === "environments" && (

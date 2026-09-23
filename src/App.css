@@ -331,6 +331,8 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
 .folder-heading > button:first-child:hover {
   color: var(--accent);
 }
+.collection-name.drop-target { outline: 1px solid var(--accent); outline-offset: -2px; border-radius: 5px; background: var(--accent-bg); }
+.folder-node.child-folder { margin-left: 13px; border-left: 1px solid var(--line); }
 .request-link {
   width: 100%;
   display: flex;
@@ -341,7 +343,10 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
   border-radius: 6px;
   color: var(--muted);
   font-size: 12px;
+  cursor: grab;
 }
+.request-link:active { cursor: grabbing; }
+.request-link.drop-target { outline: 1px solid var(--accent); outline-offset: -2px; background: var(--accent-bg); }
 .request-link:hover {
   background: var(--hover);
   color: var(--text);
@@ -377,6 +382,12 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
 }
 .folder-heading {
   padding-left: 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.folder-heading.drop-target {
+  border-color: var(--accent);
+  background: var(--accent-bg);
 }
 .folder-heading > button:first-child {
   color: var(--muted);
