@@ -154,6 +154,7 @@ pub struct RunInput {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunResult {
+    pub url: String,
     pub status: u16,
     pub status_text: String,
     pub headers: Vec<(String, String)>,

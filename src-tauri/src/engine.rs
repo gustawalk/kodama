@@ -2,11 +2,13 @@ use crate::model::{Entry, RunInput, RunResult, Variable};
 use crate::script::{run_script, ScriptResponse};
 use base64::Engine;
 use reqwest::{
+    cookie::Jar,
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Method, Url,
 };
 use std::{
     collections::HashMap,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -71,7 +73,12 @@ fn changed_runtime(
     }
 }
 
+#[cfg(test)]
 pub async fn execute(input: RunInput) -> Result<RunResult, String> {
+    execute_with_jar(input, Arc::new(Jar::default())).await
+}
+
+pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResult, String> {
     let mut variables = HashMap::new();
     apply_scope(&mut variables, &input.defaults);
     apply_scope(&mut variables, &input.collection_variables);
@@ -107,6 +114,7 @@ pub async fn execute(input: RunInput) -> Result<RunResult, String> {
         .map_err(|e| format!("Invalid HTTP method: {e}"))?;
     let timeout = request.timeout_ms.unwrap_or(30_000).clamp(100, 300_000);
     let client = Client::builder()
+        .cookie_provider(jar)
         .timeout(Duration::from_millis(timeout))
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
@@ -135,11 +143,13 @@ pub async fn execute(input: RunInput) -> Result<RunResult, String> {
     match request.body.kind.as_str() {
         "json" => {
             let body = interpolate(&request.body.text, &variables, &runtime)?;
-            serde_json::from_str::<serde_json::Value>(&body)
-                .map_err(|e| format!("Invalid JSON body: {e}"))?;
-            builder = builder
-                .header("content-type", "application/json")
-                .body(body);
+            if !body.trim().is_empty() {
+                serde_json::from_str::<serde_json::Value>(&body)
+                    .map_err(|e| format!("Invalid JSON body: {e}"))?;
+                builder = builder
+                    .header("content-type", "application/json")
+                    .body(body);
+            }
         }
         "text" => builder = builder.body(interpolate(&request.body.text, &variables, &runtime)?),
         "form" => {
@@ -164,6 +174,7 @@ pub async fn execute(input: RunInput) -> Result<RunResult, String> {
         .await
         .map_err(|e| format!("Request failed: {e}"))?;
     let status = response.status();
+    let response_url = response.url().to_string();
     let status_text = status.canonical_reason().unwrap_or("").to_string();
     let response_headers: Vec<(String, String)> = response
         .headers()
@@ -201,6 +212,7 @@ pub async fn execute(input: RunInput) -> Result<RunResult, String> {
         changed_runtime(&variables, &output.variables, &mut runtime);
     }
     Ok(RunResult {
+        url: response_url,
         status: status.as_u16(),
         status_text,
         headers: response_headers,
@@ -322,6 +334,63 @@ mod tests {
         .unwrap();
         assert_eq!(second.status, 200);
         assert_eq!(second.body, r#"{"authorized":true}"#);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn shared_cookie_jar_sends_login_cookie_on_next_request() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            for index in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let mut buffer = [0_u8; 4096];
+                let read = stream.read(&mut buffer).unwrap();
+                let text = String::from_utf8_lossy(&buffer[..read]);
+                if index == 0 {
+                    write!(stream, "HTTP/1.1 200 OK\r\nSet-Cookie: session=abc; Path=/; HttpOnly\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                } else {
+                    assert!(text.to_ascii_lowercase().contains("cookie: session=abc"));
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .unwrap();
+                }
+            }
+        });
+        let jar = Arc::new(Jar::default());
+        for path in ["login", "protected"] {
+            let request = ApiRequest {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: path.into(),
+                method: "GET".into(),
+                url: format!("http://127.0.0.1:{port}/{path}"),
+                folder_id: None,
+                query: vec![],
+                headers: vec![],
+                auth: Auth::default(),
+                body: Body::default(),
+                pre_script: String::new(),
+                post_script: String::new(),
+                trusted: true,
+                timeout_ms: Some(3000),
+            };
+            tauri::async_runtime::block_on(execute_with_jar(
+                RunInput {
+                    request,
+                    defaults: vec![],
+                    collection_variables: vec![],
+                    environment_variables: vec![],
+                    runtime_variables: HashMap::new(),
+                },
+                jar.clone(),
+            ))
+            .unwrap();
+        }
         server.join().unwrap();
     }
 }

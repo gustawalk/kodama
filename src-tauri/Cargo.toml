@@ -21,7 +21,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls", "cookies"] }
 tokio = { version = "1", features = ["time", "sync", "macros"] }
 boa_engine = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }

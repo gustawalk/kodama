@@ -49,6 +49,7 @@ export type Store = {
   activeEnvironmentId: string | null;
 };
 export type RunResult = {
+  url: string;
   status: number;
   statusText: string;
   headers: [string, string][];
@@ -84,7 +85,7 @@ export const newRequest = (
   query: [],
   headers: [],
   auth: { kind: "none", username: "", password: "", token: "" },
-  body: { kind: "none", text: "", fields: [] },
+  body: { kind: "json", text: "", fields: [] },
   preScript: "",
   postScript: "",
   trusted: true,

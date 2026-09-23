@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import type React from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { toast, Toaster } from "sonner";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { VariableField, type ResolvedVariable } from "./VariableField";
+import { exportCurl, importCurl } from "./curl";
 import type {
   ApiRequest,
   Collection,
@@ -19,6 +26,7 @@ import {
 import "./App.css";
 
 type Panel = "params" | "headers" | "auth" | "body" | "pre" | "post";
+const CodeEditor = lazy(() => import("./CodeEditor").then((module) => ({ default: module.CodeEditor })));
 type Sidebar = "requests" | "environments" | "variables" | "history";
 const copy = <T,>(value: T): T => structuredClone(value);
 const message = (error: unknown) =>
@@ -73,10 +81,11 @@ function mergeWorkspace(current: Store, imported: Store) {
 }
 
 function Entries(
-  { rows, onChange, name }: {
+  { rows, onChange, name, variables }: {
     rows: Entry[];
     onChange: (rows: Entry[]) => void;
     name: string;
+    variables: Record<string, ResolvedVariable>;
   },
 ) {
   const edit = (id: string, field: keyof Entry, value: string | boolean) =>
@@ -99,17 +108,19 @@ function Entries(
             checked={row.enabled}
             onChange={(event) => edit(row.id, "enabled", event.target.checked)}
           />
-          <input
-            aria-label={name}
+          <VariableField
+            label={name}
+            variables={variables}
             value={row.key}
             placeholder={name}
-            onChange={(event) => edit(row.id, "key", event.target.value)}
+            onChange={(value) => edit(row.id, "key", value)}
           />
-          <input
-            aria-label="Value"
+          <VariableField
+            label="Value"
+            variables={variables}
             value={row.value}
             placeholder="Value or {{NAME}}"
-            onChange={(event) => edit(row.id, "value", event.target.value)}
+            onChange={(value) => edit(row.id, "value", value)}
           />
           <button
             className="icon"
@@ -136,6 +147,7 @@ function VariableEditor(
     onChange: (rows: Variable[]) => void;
   },
 ) {
+  const [shown, setShown] = useState<string[]>([]);
   const edit = (id: string, field: keyof Variable, value: string | boolean) =>
     onChange(
       rows.map((row) => row.id === id ? { ...row, [field]: value } : row),
@@ -152,11 +164,12 @@ function VariableEditor(
           />
           <input
             aria-label="Variable value"
-            type={row.secret ? "password" : "text"}
+            type={row.secret && !shown.includes(row.id) ? "password" : "text"}
             value={row.value}
             placeholder="Value"
             onChange={(event) => edit(row.id, "value", event.target.value)}
           />
+          <button className="icon" aria-label={shown.includes(row.id) ? "Hide variable value" : "Show variable value"} title={shown.includes(row.id) ? "Hide value" : "Show value"} onClick={() => setShown((previous) => previous.includes(row.id) ? previous.filter((id) => id !== row.id) : [...previous, row.id])}>◉</button>
           <label>
             <input
               type="checkbox"
@@ -188,6 +201,7 @@ function App() {
   const [store, setStore] = useState<Store>(demoStore);
   const [ready, setReady] = useState(false);
   const [saved, setSaved] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tabs, setTabs] = useState<string[]>([]);
   const [panel, setPanel] = useState<Panel>("params");
@@ -195,7 +209,8 @@ function App() {
   const [search, setSearch] = useState("");
   const [runtime, setRuntime] = useState<Record<string, string>>({});
   const [response, setResponse] = useState<RunResult | null>(null);
-  const [responseView, setResponseView] = useState<"body" | "headers">("body");
+  const [responseView, setResponseView] = useState<"body" | "headers" | "cookies">("body");
+  const [cookieText, setCookieText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<
@@ -204,6 +219,17 @@ function App() {
   const [incoming, setIncoming] = useState<Store | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [renameDialog, setRenameDialog] = useState<{ name: string; apply: (name: string) => void } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteDialog, setDeleteDialog] = useState<{ name: string; apply: () => void } | null>(null);
+  const [responseSearch, setResponseSearch] = useState("");
+  const [curlDialog, setCurlDialog] = useState(false);
+  const [curlText, setCurlText] = useState("");
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    return () => document.documentElement.classList.remove("dark");
+  }, [theme]);
 
   useEffect(() => {
     invoke<Store>("load_store").then((data) => {
@@ -214,20 +240,18 @@ function App() {
       setTabs(id ? [id] : []);
       setReady(true);
     }).catch((err) => {
-      setError(`Could not load workspace: ${message(err)}`);
-      const id = store.collections[0]?.requests[0]?.id ?? null;
-      setSelectedId(id);
-      setTabs(id ? [id] : []);
-      setReady(true);
+      setLoadError(`Could not load workspace: ${message(err)}`);
+      setSaved(false);
+      toast.error(`Could not load workspace: ${message(err)}`);
     });
   }, []);
   useEffect(() => {
     if (!ready) return;
     setSaved(false);
     const timer = window.setTimeout(() => {
-      invoke("save_store", { store }).then(() => setSaved(true)).catch((err) =>
-        setError(`Could not save workspace: ${message(err)}`)
-      );
+      invoke("save_store", { store }).then(() => setSaved(true)).catch((err) => {
+        toast.error(`Could not save workspace: ${message(err)}`, { id: "save-error" });
+      });
     }, 400);
     return () => window.clearTimeout(timer);
   }, [store, ready]);
@@ -271,11 +295,13 @@ function App() {
       }
     });
     Object.entries(runtime).forEach(([name, value]) => {
-      values[name] = {
+      const item = {
         value,
         source: "Runtime",
         secret: /token|key|secret|password/i.test(name),
       };
+      values[name] = item;
+      values[`_.${name}`] = item;
     });
     return values;
   }, [store.defaults, collection, environment, runtime]);
@@ -302,6 +328,22 @@ function App() {
       return response.body;
     }
   }, [response]);
+  const responseMatches = responseSearch ? responseBody.toLowerCase().split(responseSearch.toLowerCase()).length - 1 : 0;
+  const highlightedResponse = () => {
+    if (!responseSearch) return responseBody;
+    const parts: React.ReactNode[] = [];
+    const lower = responseBody.toLowerCase();
+    const needle = responseSearch.toLowerCase();
+    let index = 0;
+    while (index < responseBody.length) {
+      const found = lower.indexOf(needle, index);
+      if (found < 0) { parts.push(responseBody.slice(index)); break; }
+      parts.push(responseBody.slice(index, found));
+      parts.push(<mark key={found}>{responseBody.slice(found, found + needle.length)}</mark>);
+      index = found + needle.length;
+    }
+    return parts;
+  };
 
   const editStore = (change: (next: Store) => void) =>
     setStore((previous) => {
@@ -330,8 +372,8 @@ function App() {
     setSidebar("requests");
   };
   const rename = (original: string, apply: (name: string) => void) => {
-    const value = window.prompt("Name", original)?.trim();
-    if (value) apply(value);
+    setRenameValue(original);
+    setRenameDialog({ name: original, apply });
   };
   const addRequest = (collectionId: string, folderId: string | null = null) => {
     const item = newRequest("New request", folderId);
@@ -341,14 +383,16 @@ function App() {
     open(item.id);
   };
   const removeRequest = () => {
-    if (!request || !collection || !window.confirm(`Delete ${request.name}?`)) {
-      return;
-    }
-    editCollection(collection.id, (next) => {
-      next.requests = next.requests.filter((item) => item.id !== request.id);
-    });
-    setTabs((previous) => previous.filter((id) => id !== request.id));
-    setSelectedId(null);
+    if (!request || !collection) return;
+    const requestId = request.id;
+    const collectionId = collection.id;
+    setDeleteDialog({ name: request.name, apply: () => {
+      editCollection(collectionId, (next) => {
+        next.requests = next.requests.filter((item) => item.id !== requestId);
+      });
+      setTabs((previous) => previous.filter((id) => id !== requestId));
+      setSelectedId(null);
+    } });
   };
   const moveRequest = (direction: -1 | 1) => {
     if (!request || !collection) return;
@@ -393,6 +437,7 @@ function App() {
         },
       });
       setResponse(result);
+      setCookieText(await invoke<string>("get_cookies", { url: result.url }).catch(() => ""));
       setRuntime(result.runtimeVariables);
       setHistory((previous) =>
         [{
@@ -452,8 +497,11 @@ function App() {
     setIncoming(null);
   }
 
+  if (loadError) return <div className={`app kodama-${theme}`}><div className="load-failure"><span className="brand-icon">◈</span><h1>Workspace unavailable</h1><p>{loadError}</p><button className="send" onClick={() => window.location.reload()}>Retry loading</button></div></div>;
+
   return (
-    <div className={`app ${theme}`}>
+    <TooltipProvider><div className={`app kodama-${theme}`}>
+      <Toaster theme={theme} position="bottom-right" richColors />
       <header className="topbar">
         <div className="brand">
           <span className="brand-icon">◈</span>
@@ -461,9 +509,10 @@ function App() {
           <small>REST workspace</small>
         </div>
         <div className="top-actions">
-          <span className="saved">{saved ? "Saved locally" : "Saving…"}</span>
+          <span className="saved">{!ready ? "Workspace unavailable" : saved ? "Saved locally" : "Saving…"}</span>
           <button className="subtle" onClick={importFile}>Import</button>
           <button className="subtle" onClick={exportFile}>Export</button>
+          <button className="subtle" onClick={() => setCurlDialog(true)}>Import cURL</button>
           <button
             className="icon theme"
             aria-label="Toggle theme"
@@ -605,11 +654,7 @@ function App() {
                               className="icon"
                               title="Delete folder"
                               onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `Delete ${folder.name} and its requests?`,
-                                  )
-                                ) {
+                                setDeleteDialog({ name: `${folder.name} and its requests`, apply: () => {
                                   editCollection(item.id, (next) => {
                                     next.folders = next.folders.filter(
                                       (value) => value.id !== folder.id,
@@ -619,7 +664,7 @@ function App() {
                                         value.folderId !== folder.id,
                                     );
                                   });
-                                }
+                                } });
                               }}
                             >
                               ×
@@ -659,13 +704,13 @@ function App() {
                     </button>
                     <button
                       onClick={() => {
-                        if (window.confirm(`Delete ${item.name}?`)) {
+                        setDeleteDialog({ name: item.name, apply: () => {
                           editStore((next) => {
                             next.collections = next.collections.filter(
                               (value) => value.id !== item.id,
                             );
                           });
-                        }
+                        } });
                       }}
                     >
                       Delete
@@ -772,11 +817,7 @@ function App() {
                 ? Object.entries(runtime).map(([name, value]) => (
                   <div className="inspector" key={name}>
                     <code>_.{name}</code>
-                    <span>
-                      {/token|key|secret|password/i.test(name)
-                        ? "••••••"
-                        : value}
-                    </span>
+                    <Tooltip><TooltipTrigger asChild><span tabIndex={0}>{/token|key|secret|password/i.test(name) ? "••••••" : value}</span></TooltipTrigger><TooltipContent>{value || "Empty value"}</TooltipContent></Tooltip>
                     <button
                       className="icon"
                       onClick={() =>
@@ -817,9 +858,8 @@ function App() {
               {Object.entries(resolvedVariables).map(([name, item]) => (
                 <div className="inspector" key={name}>
                   <code>{name}</code>
-                  <span title={item.source}>
-                    {item.secret ? "••••••" : item.value}
-                  </span>
+                  <Tooltip><TooltipTrigger asChild><span tabIndex={0}>{item.secret ? "••••••" : item.value}</span></TooltipTrigger>
+                    <TooltipContent>{item.value || "Empty value"} · {item.source}</TooltipContent></Tooltip>
                 </div>
               ))}
             </div>
@@ -927,6 +967,7 @@ function App() {
                       >
                         Duplicate
                       </button>
+                      <button className="subtle small" onClick={() => { void navigator.clipboard.writeText(exportCurl(request)).then(() => toast.success("cURL copied"), (err) => toast.error(message(err))); }}>Copy cURL</button>
                       <button
                         className="subtle small"
                         onClick={() => moveRequest(-1)}
@@ -967,13 +1008,14 @@ function App() {
                         "OPTIONS",
                       ].map((method) => <option key={method}>{method}</option>)}
                     </select>
-                    <input
-                      aria-label="Request URL"
+                    <VariableField
+                      label="Request URL"
+                      variables={resolvedVariables}
                       placeholder="https://api.example.com/resource"
                       value={request.url}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         editRequest((next) => {
-                          next.url = event.target.value;
+                          next.url = value;
                         })}
                     />
                     <button
@@ -1034,6 +1076,7 @@ function App() {
                     {panel === "params" && (
                       <Entries
                         name="Parameter"
+                        variables={resolvedVariables}
                         rows={request.query}
                         onChange={(rows) =>
                           editRequest((next) => {
@@ -1044,6 +1087,7 @@ function App() {
                     {panel === "headers" && (
                       <Entries
                         name="Header"
+                        variables={resolvedVariables}
                         rows={request.headers}
                         onChange={(rows) =>
                           editRequest((next) => {
@@ -1087,12 +1131,14 @@ function App() {
                           </div>
                         )}
                         {request.auth.kind === "bearer" && (
-                          <input
+                          <VariableField
+                            label="Bearer token"
+                            variables={resolvedVariables}
                             placeholder="Token or {{_.TOKEN}}"
                             value={request.auth.token}
-                            onChange={(event) =>
+                            onChange={(value) =>
                               editRequest((next) => {
-                                next.auth.token = event.target.value;
+                                next.auth.token = value;
                               })}
                           />
                         )}
@@ -1132,24 +1178,27 @@ function App() {
                               </label>
                             ),
                           )}
+                          {request.body.kind === "json" && <button className="subtle small" onClick={() => { try { const formatted = JSON.stringify(JSON.parse(request.body.text.trim() || "{}"), null, 2); editRequest((next) => { next.body.text = formatted; }); toast.success("JSON formatted"); } catch (err) { toast.error(`Invalid JSON: ${message(err)}`); } }}>Format JSON</button>}
                         </div>
                         {["json", "text"].includes(request.body.kind) && (
-                          <textarea
-                            className="code"
-                            spellCheck={false}
-                            placeholder={request.body.kind === "json"
-                              ? '{"key":"value"}'
-                              : "Request body"}
+                          <Suspense fallback={<div className="code-editor-loading">Loading editor…</div>}>
+                          <CodeEditor
+                            label="Request body"
+                            variables={resolvedVariables}
+                            theme={theme}
+                            language={request.body.kind === "json" ? "json" : "text"}
                             value={request.body.text}
-                            onChange={(event) =>
+                            onChange={(value) =>
                               editRequest((next) => {
-                                next.body.text = event.target.value;
+                                next.body.text = value;
                               })}
                           />
+                          </Suspense>
                         )}
                         {["form", "multipart"].includes(request.body.kind) && (
                           <Entries
                             name="Field"
+                            variables={resolvedVariables}
                             rows={request.body.fields}
                             onChange={(rows) =>
                               editRequest((next) => {
@@ -1173,23 +1222,21 @@ function App() {
                               : "_.NOW = new Date().toISOString();"}
                           </code>
                         </div>
-                        <textarea
-                          className="code"
-                          aria-label={`${panel} script`}
-                          spellCheck={false}
-                          placeholder={panel === "post"
-                            ? "_.TOKEN = response.json().token;"
-                            : "// Set variables or change request"}
+                        <Suspense fallback={<div className="code-editor-loading">Loading editor…</div>}><CodeEditor
+                          label={`${panel} script`}
+                          language="javascript"
+                          theme={theme}
+                          variables={resolvedVariables}
                           value={panel === "pre"
                             ? request.preScript
                             : request.postScript}
-                          onChange={(event) =>
+                          onChange={(value) =>
                             editRequest((next) => {
                               if (panel === "pre") {
-                                next.preScript = event.target.value;
-                              } else next.postScript = event.target.value;
+                                next.preScript = value;
+                              } else next.postScript = value;
                             })}
-                        />
+                        /></Suspense>
                         <p className="hint">
                           Use <code>_</code> for variables, <code>request</code>
                           {" "}
@@ -1236,8 +1283,14 @@ function App() {
                       >
                         Headers
                       </button>
+                      <button className={responseView === "cookies" ? "active" : ""} onClick={() => setResponseView("cookies")}>Cookies</button>
                     </nav>
                   </div>
+                  {response && !response.binary && responseView === "body" && <div className="response-find">
+                    <input aria-label="Find in response" placeholder="Find in response" value={responseSearch} onChange={(event) => setResponseSearch(event.target.value)} />
+                    <span>{responseSearch ? `${responseMatches} matches` : ""}</span>
+                    <button className="subtle small" onClick={() => { void navigator.clipboard.writeText(responseBody).then(() => toast.success("Response copied"), (err) => toast.error(message(err))); }}>Copy</button>
+                  </div>}
                   {error
                     ? (
                       <div className="response-error">
@@ -1246,7 +1299,9 @@ function App() {
                       </div>
                     )
                     : response
-                    ? responseView === "body"
+                    ? responseView === "cookies"
+                      ? <div className="response-headers"><p>Session cookies for {response.url}</p><pre>{cookieText || "No cookies for this URL"}</pre><button className="subtle small" onClick={() => { void invoke("clear_cookies").then(() => { setCookieText(""); toast.success("Session cookies cleared"); }, (err) => toast.error(message(err))); }}>Clear session cookies</button></div>
+                    : responseView === "body"
                       ? response.binary
                         ? (
                           <div className="binary">
@@ -1259,7 +1314,7 @@ function App() {
                             </a>
                           </div>
                         )
-                        : <pre className="response-body">{responseBody}</pre>
+                        : <pre className="response-body">{highlightedResponse()}</pre>
                       : (
                         <div className="response-headers">
                           {response.headers.map(([key, value], index) => (
@@ -1302,41 +1357,38 @@ function App() {
             )}
         </main>
       </div>
-      {incoming && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Import workspace"
-        >
-          <div className="modal">
-            <div className="eyebrow">IMPORT KODAMA JSON</div>
-            <h2>Bring in this workspace?</h2>
-            <p>
-              {incoming.collections.length} collections and{" "}
-              {incoming.environments.length}{" "}
-              environments. Imported scripts stay disabled until you review and
-              trust each request.
-            </p>
-            <p className="hint">
-              Merge will skip {mergeWorkspace(store, incoming).skipped}{" "}
-              items with colliding UUIDs. Replace removes the current workspace.
-            </p>
-            <div className="modal-actions">
-              <button className="subtle" onClick={() => setIncoming(null)}>
-                Cancel
-              </button>
-              <button className="subtle" onClick={() => applyImport("merge")}>
-                Merge
-              </button>
-              <button className="send" onClick={() => applyImport("replace")}>
-                Replace
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <Dialog open={!!incoming} onOpenChange={(open) => { if (!open) setIncoming(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Bring in this workspace?</DialogTitle><DialogDescription>
+            {incoming?.collections.length ?? 0} collections and {incoming?.environments.length ?? 0} environments. Imported scripts stay disabled until you review and trust each request.
+          </DialogDescription></DialogHeader>
+          <p className="hint">Merge will skip {incoming ? mergeWorkspace(store, incoming).skipped : 0} items with colliding UUIDs. Replace removes the current workspace.</p>
+          <DialogFooter><button className="subtle" onClick={() => setIncoming(null)}>Cancel</button><button className="subtle" onClick={() => applyImport("merge")}>Merge</button><button className="send" onClick={() => applyImport("replace")}>Replace</button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!renameDialog} onOpenChange={(open) => { if (!open) setRenameDialog(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Rename {renameDialog?.name}</DialogTitle><DialogDescription>Enter a name for this item.</DialogDescription></DialogHeader>
+          <form onSubmit={(event) => { event.preventDefault(); const name = renameValue.trim(); if (name) { renameDialog?.apply(name); setRenameDialog(null); } }}>
+            <input autoFocus aria-label="New name" className="dialog-input" value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
+            <DialogFooter><button className="subtle" type="button" onClick={() => setRenameDialog(null)}>Cancel</button><button className="send" type="submit" disabled={!renameValue.trim()}>Save</button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={curlDialog} onOpenChange={setCurlDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Import cURL</DialogTitle><DialogDescription>Paste a cURL command to add a request to the current collection.</DialogDescription></DialogHeader>
+          <textarea className="curl-input" aria-label="cURL command" placeholder="curl -X POST https://api.example.com" value={curlText} onChange={(event) => setCurlText(event.target.value)} />
+          <DialogFooter><button className="subtle" onClick={() => setCurlDialog(false)}>Cancel</button><button className="send" onClick={() => { try { const item = importCurl(curlText); const id = collection?.id ?? store.collections[0]?.id; if (!id) throw new Error("Create a collection first"); editCollection(id, (next) => next.requests.push(item)); open(item.id); setCurlDialog(false); setCurlText(""); toast.success("Request imported"); } catch (err) { toast.error(message(err)); } }}>Import request</button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={!!deleteDialog} onOpenChange={(open) => { if (!open) setDeleteDialog(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Delete {deleteDialog?.name}?</AlertDialogTitle><AlertDialogDescription>This removes it from your workspace.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { deleteDialog?.apply(); setDeleteDialog(null); }}>Delete</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div></TooltipProvider>
   );
 }
 
