@@ -25,4 +25,11 @@ describe("request URL preview", () => {
     request.query = [{ ...entry(), key: "token", value: "{{_.TOKEN}}" }];
     expect(previewRequestUrl(request, {})).toBe("https://api.example.test/users/:id?token={{_.TOKEN}}");
   });
+
+  test("keeps defined but empty variables visible instead of producing a misleading URL", () => {
+    const request = newRequest();
+    request.url = "http://localhost:{{PORT}}/v1/health";
+    expect(previewRequestUrl(request, { PORT: { value: "", source: "Collection", secret: false } }))
+      .toBe("http://localhost:{{PORT}}/v1/health");
+  });
 });

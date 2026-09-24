@@ -73,6 +73,7 @@ html.dark .variable-field input.unresolved-variable-field, html.dark .variable-f
 .variable-suggestions button { display: flex; width: 100%; height: 36px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 9px; text-align: left; border-radius: 5px; }
 .variable-suggestions button:hover, .variable-suggestions button.selected { background: var(--hover); }
 .variable-suggestions button span { color: var(--muted); font-size: 11px; }
+.variable-suggestions button.missing code, .variable-unset { color: #ff737d; }
 .variable-hover-tooltip { position: fixed; z-index: 120; display: flex; align-items: center; gap: 12px; width: max-content; min-width: min(300px, calc(100vw - 16px)); max-width: min(390px, calc(100vw - 16px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); box-shadow: 0 8px 24px #0005; pointer-events: none; font-size: 13px; }
 .variable-hover-tooltip code { color: #b7a3ff; white-space: nowrap; font-family: 'JetBrains Mono',monospace; font-size: 12px; }
 .variable-hover-tooltip > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

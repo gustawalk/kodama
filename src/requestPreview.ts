@@ -1,5 +1,5 @@
 import type { ApiRequest } from "./types";
-import type { ResolvedVariable } from "./VariableField";
+import { variableHasValue, type ResolvedVariable } from "./variableResolution";
 
 const reference = /\{\{\s*([^{}]+?)\s*\}\}/g;
 const unresolved = /\{\{[^{}]+\}\}/;
@@ -7,7 +7,7 @@ const unresolved = /\{\{[^{}]+\}\}/;
 export function previewRequestUrl(request: ApiRequest, variables: Record<string, ResolvedVariable>): string {
   const resolve = (text: string) => text.replace(reference, (raw, name: string) => {
     const variable = variables[name.trim()];
-    return variable && variable.source !== "Random" ? variable.value : raw;
+    return variableHasValue(name.trim(), variables) && variable.source !== "Random" ? variable.value : raw;
   });
   const url = resolve(request.url);
   if (!url) return "";

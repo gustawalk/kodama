@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { VariableField, type ResolvedVariable } from "./VariableField";
+import { variableHasValue } from "./variableResolution";
 import { exportCurl, importCurl } from "./curl";
 import { importOpenApi } from "./openapi";
 import { previewRequestUrl } from "./requestPreview";
@@ -1230,7 +1231,7 @@ function App() {
               {Object.entries(resolvedVariables).map(([name, item]) => (
                 <div className="inspector" key={name}>
                   <code>{name}</code>
-                  <Tooltip><TooltipTrigger asChild><span tabIndex={0}>{item.secret ? "••••••" : item.value}</span></TooltipTrigger>
+                  <Tooltip><TooltipTrigger asChild><span tabIndex={0} className={variableHasValue(name, resolvedVariables) ? "" : "variable-unset"}>{variableHasValue(name, resolvedVariables) ? item.secret ? "••••••" : item.value : "Unset"}</span></TooltipTrigger>
                     <TooltipContent>{item.value || "Empty value"} · {item.source}</TooltipContent></Tooltip>
                 </div>
               ))}

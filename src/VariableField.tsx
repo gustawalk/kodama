@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import type React from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { variableHasValue, type ResolvedVariable } from "./variableResolution";
 
-export type ResolvedVariable = { value: string; source: string; secret: boolean };
+export type { ResolvedVariable } from "./variableResolution";
 type Props = {
   value: string;
   onChange: (value: string) => void;
@@ -57,7 +58,7 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
     ? Object.keys(variables).filter((name) => name.toLowerCase().includes(active.query)).sort().slice(0, 100)
     : [], [active?.query, variables]);
   const hasUnresolved = [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)]
-    .some((match) => !variables[match[1].trim()] && !match[1].trim().startsWith("$random."));
+    .some((match) => !variableHasValue(match[1].trim(), variables));
   const showTokens = !multiline && !focused && /\{\{\s*[^{}]+?\s*\}\}/.test(value);
   const tokens = showTokens ? value.split(/(\{\{\s*[^{}]+?\s*\}\})/g) : [];
   const choose = (name: string) => {
@@ -104,6 +105,7 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
   };
   const control = multiline ? <textarea {...common} /> : <input {...common} />;
   const hoveredValue = hoveredVariable ? variables[hoveredVariable.name] : undefined;
+  const hoveredUnset = !!hoveredVariable && !variableHasValue(hoveredVariable.name, variables);
   return <div className="variable-field">
     {control}
     {showTokens && <div className="variable-token-preview" onClick={() => field.current?.focus()} aria-hidden="true">
@@ -111,23 +113,23 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
         const match = /^\{\{\s*([^{}]+?)\s*\}\}$/.exec(part);
         if (!match) return <span key={index}>{part}</span>;
         const name = match[1].trim();
-        return <span key={index} className={`variable-chip${variables[name] ? "" : " missing"}`} onMouseMove={(event) => setHoveredVariable({ name, x: event.clientX, y: event.clientY })} onMouseLeave={() => setHoveredVariable(null)}>{name}</span>;
+        return <span key={index} className={`variable-chip${variableHasValue(name, variables) ? "" : " missing"}`} onMouseMove={(event) => setHoveredVariable({ name, x: event.clientX, y: event.clientY })} onMouseLeave={() => setHoveredVariable(null)}>{name}</span>;
       })}
     </div>}
     {hoveredVariable && <div
-      className={`variable-hover-tooltip${hoveredValue ? "" : " missing"}`}
+      className={`variable-hover-tooltip${hoveredUnset ? " missing" : ""}`}
       role="tooltip"
       style={{ left: Math.max(8, Math.min(hoveredVariable.x + 14, window.innerWidth - 400)), top: Math.max(8, Math.min(hoveredVariable.y + 16, window.innerHeight - 130)) }}
     >
       <code>{`{{${hoveredVariable.name}}}`}</code>
-      {hoveredValue
-        ? <div><small>VALUE</small><span>{hoveredValue.value || "Empty value"}</span></div>
-        : <div className="variable-hover-warning"><strong><span aria-hidden="true">⚠</span> Unresolved</strong><small>Not defined in the available variables</small></div>}
+      {hoveredUnset
+        ? <div className="variable-hover-warning"><strong><span aria-hidden="true">⚠</span> {hoveredValue ? "No value set" : "Unresolved"}</strong><small>{hoveredValue ? `Set a value in ${hoveredValue.source.toLowerCase()} variables` : "Not defined in the available variables"}</small></div>
+        : <div><small>VALUE</small><span>{hoveredValue?.value}</span></div>}
     </div>}
     {!!matches.length && <div className="variable-suggestions" role="listbox" aria-label="Variables">
       {matches.map((name, index) => <Tooltip key={name}>
         <TooltipTrigger asChild><button type="button" role="option" aria-selected={selected === index}
-          className={selected === index ? "selected" : ""} onMouseDown={(event) => event.preventDefault()}
+          className={[selected === index && "selected", !variableHasValue(name, variables) && "missing"].filter(Boolean).join(" ")} onMouseDown={(event) => event.preventDefault()}
           onClick={() => choose(name)}><code>{`{{${name}}}`}</code><span>{variables[name].source}</span></button></TooltipTrigger>
         <TooltipContent>{variables[name].value || "Empty value"}</TooltipContent>
       </Tooltip>)}
