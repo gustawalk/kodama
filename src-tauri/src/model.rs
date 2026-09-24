@@ -145,6 +145,22 @@ impl Default for Store {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub store: Store,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceData {
+    pub version: u32,
+    pub active_workspace_id: String,
+    pub workspaces: Vec<Workspace>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RunInput {
     pub request: ApiRequest,
     #[serde(default)]

@@ -58,6 +58,13 @@ export type Store = {
   environments: Environment[];
   activeEnvironmentId: string | null;
 };
+export type Workspace = { id: string; name: string; store: Store };
+export type WorkspaceData = { version: number; activeWorkspaceId: string; workspaces: Workspace[] };
+export const emptyStore = (): Store => ({ version: 1, defaults: [], collections: [], environments: [], activeEnvironmentId: null });
+export const demoWorkspaceData = (): WorkspaceData => {
+  const id = uid();
+  return { version: 1, activeWorkspaceId: id, workspaces: [{ id, name: "My workspace", store: demoStore() }] };
+};
 export type RunResult = {
   url: string;
   status: number;

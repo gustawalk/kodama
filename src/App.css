@@ -170,6 +170,10 @@ textarea::placeholder {
   padding-left: 12px;
   margin-left: 3px;
 }
+.workspace-switcher { display: inline-flex; align-items: center; gap: 7px; max-width: min(220px, 25vw); padding: 6px 8px; margin-left: 2px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace-switcher:hover { border-color: var(--line); background: var(--hover); color: var(--text); }
+.workspace-switcher .workspace-indicator { flex: none; }
+.workspace-indicator { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #9b7cff; }
 .top-actions {
   display: flex;
   align-items: center;
@@ -1113,11 +1117,31 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
 .dialog-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
 .source-config-dialog[data-slot="dialog-content"] { --panel2: #1b212a; --line: #2b333e; --input: #171d25; --code: #dce7ed; --muted: #8995a4; --accent: #9ce3bb; width: min(680px, calc(100vw - 32px)); max-width: none; max-height: min(85vh, 760px); overflow-y: auto; gap: 10px; }
 html:not(.dark) .source-config-dialog[data-slot="dialog-content"] { --panel2: #f9fbfa; --line: #dbe3e2; --input: #fff; --code: #283c35; --muted: #70817b; --accent: #277e61; }
+.workspace-dialog[data-slot="dialog-content"] { --panel2: #1b212a; --line: #2b333e; --muted: #8995a4; --text: #e8eef5; --input: #171d25; --hover: #242d37; --accent: #9ce3bb; width: min(570px, calc(100vw - 32px)); max-width: none; }
+html:not(.dark) .workspace-dialog[data-slot="dialog-content"] { --panel2: #f9fbfa; --line: #dbe3e2; --muted: #70817b; --text: #22312e; --input: #fff; --hover: #edf3f0; --accent: #277e61; }
+.workspace-list { display: flex; flex-direction: column; gap: 7px; max-height: min(45vh, 330px); overflow-y: auto; }
+.workspace-list-item { display: flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
+.workspace-list-item.active { border-color: #9b7cff88; }
+.workspace-select { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 6px 9px; text-align: left; border-radius: 5px; }
+.workspace-select:hover { background: var(--hover); }
+.workspace-select > span:nth-child(2) { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.workspace-select strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.workspace-select small { color: var(--muted); font-size: 10px; }
+.workspace-current { color: #b7a3ff; font-size: 10px; }
+.workspace-create { display: flex; gap: 8px; margin-top: 8px; }
+.workspace-create input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 6px; }
+.workspace-create button { flex: none; }
 .source-config-dialog > select { width: 100%; height: 36px; padding: 0 9px; border-radius: 6px; }
 .source-config-section { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel2); }
 .source-config-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .source-config-heading strong, .source-replace strong { font-size: 12px; }
 .source-config-heading span, .source-config-section small { color: var(--muted); font-size: 10px; }
+.source-accordion-trigger { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 21px; text-align: left; gap: 10px; }
+.source-accordion-trigger > span { display: inline-flex; align-items: center; gap: 8px; }
+.source-accordion-trigger strong { font-size: 12px; }
+.source-accordion-trigger em { padding: 2px 6px; border-radius: 99px; background: var(--input); color: var(--muted); font-size: 10px; font-style: normal; }
+.source-accordion-trigger small { color: var(--muted); font-size: 10px; }
+.source-variable-list { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .source-path { display: block; padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--input); color: var(--code); font-size: 11px; overflow-wrap: anywhere; }
 .source-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .source-actions button:disabled, .source-replace button:disabled { opacity: .5; cursor: wait; }

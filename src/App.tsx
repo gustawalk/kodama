@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast, Toaster } from "sonner";
-import { Eye, EyeOff, GripVertical, Settings2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Pencil, Settings2, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,9 +19,11 @@ import type {
   RunResult,
   Store,
   Variable,
+  WorkspaceData,
 } from "./types";
 import {
-  demoStore,
+  demoWorkspaceData,
+  emptyStore,
   entry,
   newCollection,
   newRequest,
@@ -220,7 +222,15 @@ function VariableEditor(
 }
 
 function App() {
-  const [store, setStore] = useState<Store>(demoStore);
+  const [workspaceData, setWorkspaceData] = useState<WorkspaceData>(demoWorkspaceData);
+  const activeWorkspace = workspaceData.workspaces.find((item) => item.id === workspaceData.activeWorkspaceId) ?? workspaceData.workspaces[0];
+  const store = activeWorkspace.store;
+  const setStore: React.Dispatch<React.SetStateAction<Store>> = (update) => setWorkspaceData((previous) => ({
+    ...previous,
+    workspaces: previous.workspaces.map((item) => item.id === previous.activeWorkspaceId
+      ? { ...item, store: typeof update === "function" ? update(item.store) : update }
+      : item),
+  }));
   const [ready, setReady] = useState(false);
   const [saved, setSaved] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -246,7 +256,7 @@ function App() {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [renameDialog, setRenameDialog] = useState<{ name: string; apply: (name: string) => void } | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [deleteDialog, setDeleteDialog] = useState<{ name: string; apply: () => void } | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ name: string; description?: string; apply: () => void } | null>(null);
   const [responseSearch, setResponseSearch] = useState("");
   const [curlDialog, setCurlDialog] = useState(false);
   const [curlText, setCurlText] = useState("");
@@ -263,12 +273,19 @@ function App() {
   const draggingRequest = useRef<{ requestId: string; collectionId: string } | null>(null);
   const [headerVariable, setHeaderVariable] = useState<{ name: string; value: string } | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
+  const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [variablesOpen, setVariablesOpen] = useState(false);
   const [configCollectionId, setConfigCollectionId] = useState<string | null>(null);
   const [replaceSourceId, setReplaceSourceId] = useState<string | null>(null);
   const [sourceStatus, setSourceStatus] = useState<Record<string, { busy: boolean; message: string; error: boolean }>>({});
   const sourceCollectionsRef = useRef<Collection[]>([]);
   const syncingSourcesRef = useRef(new Set<string>());
   const pollingSourcesRef = useRef(false);
+  const activeWorkspaceRef = useRef(workspaceData.activeWorkspaceId);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveRevisionRef = useRef(0);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -277,10 +294,13 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    invoke<Store>("load_store").then((data) => {
-      const next = withDefaultEnvironment(data.collections.length ? data : demoStore());
-      setStore(next);
-      const id = next.collections[0]?.requests[0]?.id ?? null;
+    invoke<WorkspaceData | null>("load_workspaces").then((data) => {
+      const next = data ?? demoWorkspaceData();
+      next.workspaces = next.workspaces.map((item) => ({ ...item, store: withDefaultEnvironment(item.store) }));
+      activeWorkspaceRef.current = next.activeWorkspaceId;
+      setWorkspaceData(next);
+      const active = next.workspaces.find((item) => item.id === next.activeWorkspaceId) ?? next.workspaces[0];
+      const id = active.store.collections[0]?.requests[0]?.id ?? null;
       setSelectedId(id);
       setTabs(id ? [id] : []);
       setReady(true);
@@ -306,16 +326,23 @@ function App() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [contextMenu]);
+  const persistWorkspaces = (data: WorkspaceData, revision: number) => {
+    saveQueueRef.current = saveQueueRef.current.catch(() => {}).then(async () => {
+      await invoke("save_workspaces", { workspaces: data });
+      if (saveRevisionRef.current === revision) setSaved(true);
+    }).catch((err) => {
+      toast.error(`Could not save workspace: ${message(err)}`, { id: "save-error" });
+    });
+  };
   useEffect(() => {
     if (!ready) return;
+    const revision = ++saveRevisionRef.current;
     setSaved(false);
     const timer = window.setTimeout(() => {
-      invoke("save_store", { store }).then(() => setSaved(true)).catch((err) => {
-        toast.error(`Could not save workspace: ${message(err)}`, { id: "save-error" });
-      });
+      persistWorkspaces(workspaceData, revision);
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [store, ready]);
+  }, [workspaceData, ready]);
   useEffect(() => { sourceCollectionsRef.current = store.collections; }, [store.collections]);
   useEffect(() => {
     if (!ready) return;
@@ -342,7 +369,7 @@ function App() {
     void checkSources();
     const timer = window.setInterval(() => { void checkSources(); }, 5000);
     return () => { stopped = true; window.clearInterval(timer); };
-  }, [ready]);
+  }, [ready, workspaceData.activeWorkspaceId]);
 
   const current = findRequest(store, selectedId);
   const request = current?.request;
@@ -673,7 +700,7 @@ function App() {
   };
 
   async function send() {
-    if (!request || !collection || busy) return;
+    if (!request || !collection || busy || switchingWorkspace) return;
     setBusy(true);
     setError("");
     setResponse(null);
@@ -725,9 +752,7 @@ function App() {
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        void invoke("save_store", { store }).then(() => setSaved(true)).catch(
-          (err) => setError(message(err)),
-        );
+        persistWorkspaces(workspaceData, saveRevisionRef.current);
       }
     };
     window.addEventListener("keydown", handler);
@@ -753,6 +778,7 @@ function App() {
     } catch (err) { toast.error(`Could not import OpenAPI: ${message(err)}`); }
   }
   async function applySourceFile(collectionId: string, file: SourceFile, mode: "merge" | "replace", announce: boolean) {
+    const targetWorkspaceId = workspaceData.activeWorkspaceId;
     if (syncingSourcesRef.current.has(collectionId)) return;
     syncingSourcesRef.current.add(collectionId);
     setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: true, message: "Reading source…", error: false } }));
@@ -765,6 +791,7 @@ function App() {
       for (const name of placeholders) {
         if (!imported.variables.some((item) => item.name === name)) imported.variables.push({ ...variable(), name });
       }
+      if (activeWorkspaceRef.current !== targetWorkspaceId) return;
       const current = sourceCollectionsRef.current.find((item) => item.id === collectionId);
       if (!current) throw new Error("Collection no longer exists");
       const details = { path: file.path, stamp: file.stamp, placeholders };
@@ -824,6 +851,63 @@ function App() {
     setResponse(null);
     setIncoming(null);
   }
+  function resetWorkspaceSession(next: Store) {
+    const firstId = next.collections[0]?.requests[0]?.id ?? null;
+    setSelectedId(firstId);
+    setTabs(firstId ? [firstId] : []);
+    setRuntime({});
+    setResponse(null);
+    setHistory([]);
+    setExpandedHistory(null);
+    setError("");
+    setCookieText("");
+    setSourceStatus({});
+    setConfigOpen(false);
+    setConfigCollectionId(null);
+    setContextMenu(null);
+    setSearch("");
+  }
+  async function clearWorkspaceCookies() {
+    try { await invoke("clear_cookies"); return true; }
+    catch (err) { toast.error(`Could not clear session cookies: ${message(err)}`); return false; }
+  }
+  async function switchWorkspace(id: string) {
+    if (busy || switchingWorkspace || id === workspaceData.activeWorkspaceId) { setWorkspaceDialogOpen(false); return; }
+    const next = workspaceData.workspaces.find((item) => item.id === id);
+    if (!next) return;
+    setSwitchingWorkspace(true);
+    if (!await clearWorkspaceCookies()) { setSwitchingWorkspace(false); return; }
+    activeWorkspaceRef.current = id;
+    setWorkspaceData((previous) => ({ ...previous, activeWorkspaceId: id }));
+    resetWorkspaceSession(next.store);
+    setWorkspaceDialogOpen(false);
+    setSwitchingWorkspace(false);
+  }
+  async function createWorkspace() {
+    const name = newWorkspaceName.trim();
+    if (!name || busy || switchingWorkspace) return;
+    setSwitchingWorkspace(true);
+    if (!await clearWorkspaceCookies()) { setSwitchingWorkspace(false); return; }
+    const id = uid();
+    const next = emptyStore();
+    activeWorkspaceRef.current = id;
+    setWorkspaceData((previous) => ({ ...previous, activeWorkspaceId: id, workspaces: [...previous.workspaces, { id, name, store: next }] }));
+    resetWorkspaceSession(next);
+    setNewWorkspaceName("");
+    setWorkspaceDialogOpen(false);
+    toast.success(`Created ${name}`);
+    setSwitchingWorkspace(false);
+  }
+  async function deleteWorkspace(id: string) {
+    if (workspaceData.workspaces.length === 1) return;
+    const remaining = workspaceData.workspaces.filter((item) => item.id !== id);
+    const wasActive = id === workspaceData.activeWorkspaceId;
+    if (wasActive && !await clearWorkspaceCookies()) { setWorkspaceDialogOpen(true); return; }
+    if (wasActive) activeWorkspaceRef.current = remaining[0].id;
+    setWorkspaceData((previous) => ({ ...previous, workspaces: previous.workspaces.filter((item) => item.id !== id), activeWorkspaceId: wasActive ? remaining[0].id : previous.activeWorkspaceId }));
+    if (wasActive) resetWorkspaceSession(remaining[0].store);
+    setWorkspaceDialogOpen(true);
+  }
 
   if (loadError) return <div className={`app kodama-${theme}`}><div className="load-failure"><img className="brand-icon brand-logo" src="/icon.svg" alt="" /><h1>Workspace unavailable</h1><p>{loadError}</p><button className="send" onClick={() => window.location.reload()}>Retry loading</button></div></div>;
 
@@ -834,7 +918,7 @@ function App() {
         <div className="brand">
           <img className="brand-icon brand-logo" src="/icon.svg" alt="" />
           <strong>Kodama</strong>
-          <small>REST workspace</small>
+          <button className="workspace-switcher" onClick={() => setWorkspaceDialogOpen(true)} title="Switch workspace"><span className="workspace-indicator" />{activeWorkspace.name}<ChevronDown size={13} /></button>
         </div>
         <div className="top-actions">
           <span className="saved">{!ready ? "Workspace unavailable" : saved ? "Saved locally" : "Saving…"}</span>
@@ -1186,7 +1270,7 @@ function App() {
             </div>
           )}
           <div className="sidebar-footer">
-            <span className="online-dot"></span> Local workspace{" "}
+            <span className="online-dot"></span> {activeWorkspace.name}{" "}
             <span>v0.1</span>
           </div>
         </aside>
@@ -1798,6 +1882,22 @@ function App() {
           <DialogFooter><button className="subtle" onClick={() => setCurlDialog(false)}>Cancel</button><button className="send" onClick={() => { try { const item = importCurl(curlText); const id = collection?.id ?? store.collections[0]?.id; if (!id) throw new Error("Create a collection first"); editCollection(id, (next) => next.requests.push(item)); open(item.id); setCurlDialog(false); setCurlText(""); toast.success("Request imported"); } catch (err) { toast.error(message(err)); } }}>Import request</button></DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={workspaceDialogOpen} onOpenChange={setWorkspaceDialogOpen}>
+        <DialogContent className="workspace-dialog">
+          <DialogHeader><DialogTitle>Workspaces</DialogTitle><DialogDescription>Keep each project's requests, environments, and variables together. Import and export work on the selected workspace.</DialogDescription></DialogHeader>
+          <div className="workspace-list">
+            {workspaceData.workspaces.map((item) => <div className={`workspace-list-item${item.id === workspaceData.activeWorkspaceId ? " active" : ""}`} key={item.id}>
+              <button className="workspace-select" disabled={busy || switchingWorkspace} onClick={() => void switchWorkspace(item.id)}><span className="workspace-indicator" /><span><strong>{item.name}</strong><small>{item.store.collections.length} collections · {item.store.environments.length} environments</small></span>{item.id === workspaceData.activeWorkspaceId && <span className="workspace-current">Current</span>}</button>
+              <button className="icon" aria-label={`Rename ${item.name}`} title="Rename workspace" onClick={() => { setWorkspaceDialogOpen(false); rename(item.name, (name) => { setWorkspaceData((previous) => ({ ...previous, workspaces: previous.workspaces.map((workspace) => workspace.id === item.id ? { ...workspace, name } : workspace) })); setWorkspaceDialogOpen(true); }); }}><Pencil size={14} /></button>
+              <button className="icon danger" aria-label={`Delete ${item.name}`} title={workspaceData.workspaces.length === 1 ? "Keep at least one workspace" : "Delete workspace"} disabled={workspaceData.workspaces.length === 1 || busy || switchingWorkspace} onClick={() => { setWorkspaceDialogOpen(false); setDeleteDialog({ name: item.name, description: `This permanently removes ${item.name} and all its collections, requests, environments, and variables. Other workspaces stay intact.`, apply: () => { void deleteWorkspace(item.id); } }); }}><Trash2 size={14} /></button>
+            </div>)}
+          </div>
+          <form className="workspace-create" onSubmit={(event) => { event.preventDefault(); void createWorkspace(); }}>
+            <input aria-label="New workspace name" placeholder="New workspace name" value={newWorkspaceName} onChange={(event) => setNewWorkspaceName(event.target.value)} maxLength={80} />
+            <button className="send" type="submit" disabled={!newWorkspaceName.trim() || busy || switchingWorkspace}>Create workspace</button>
+          </form>
+        </DialogContent>
+      </Dialog>
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="source-config-dialog">
           <DialogHeader><DialogTitle>Collection settings</DialogTitle><DialogDescription>Link an OpenAPI JSON, JavaScript, or TypeScript file. Kodama reads the exported document without running the file.</DialogDescription></DialogHeader>
@@ -1822,8 +1922,8 @@ function App() {
               </div>
               {configCollection.source && <>
                 <div className="source-config-section">
-                  <div className="source-config-heading"><strong>Collection variables</strong><span>Values you set here survive normal sync</span></div>
-                  {configCollection.variables.length ? configCollection.variables.map((item) => <label className="source-variable" key={item.id}><code>{item.name}</code><input aria-label={`Value for ${item.name}`} value={item.value} placeholder={`Set ${item.name}`} onChange={(event) => editCollection(configCollection.id, (next) => { const variable = next.variables.find((value) => value.id === item.id); if (variable) variable.value = event.target.value; })} /></label>) : <p className="hint">This source has no collection variables.</p>}
+                  <button className="source-accordion-trigger" aria-expanded={variablesOpen} onClick={() => setVariablesOpen((previous) => !previous)}><span>{variablesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<strong>Collection variables</strong><em>{configCollection.variables.length}</em></span><small>Values you set here survive normal sync</small></button>
+                  {variablesOpen && <div className="source-variable-list">{configCollection.variables.length ? configCollection.variables.map((item) => <label className="source-variable" key={item.id}><code>{item.name}</code><input aria-label={`Value for ${item.name}`} value={item.value} placeholder={`Set ${item.name}`} onChange={(event) => editCollection(configCollection.id, (next) => { const variable = next.variables.find((value) => value.id === item.id); if (variable) variable.value = event.target.value; })} /></label>) : <p className="hint">This source has no collection variables.</p>}</div>}
                 </div>
                 <div className="source-config-section source-replace">
                   <div><strong>Replace collection from source</strong><p>Removes local routes, folders, scripts, and collection variables, then imports the current file again.</p></div>
@@ -1850,7 +1950,7 @@ function App() {
       </Dialog>
       <AlertDialog open={!!deleteDialog} onOpenChange={(open) => { if (!open) setDeleteDialog(null); }}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete {deleteDialog?.name}?</AlertDialogTitle><AlertDialogDescription>This removes it from your workspace.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>Delete {deleteDialog?.name}?</AlertDialogTitle><AlertDialogDescription>{deleteDialog?.description ?? "This removes it from your workspace."}</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { deleteDialog?.apply(); setDeleteDialog(null); }}>Delete</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

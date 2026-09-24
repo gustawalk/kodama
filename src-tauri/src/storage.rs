@@ -1,4 +1,4 @@
-use crate::model::{Store, FORMAT_VERSION};
+use crate::model::{Store, Workspace, WorkspaceData, FORMAT_VERSION};
 use serde::Serialize;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -71,6 +71,33 @@ fn validate(store: &Store) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_workspaces(data: &WorkspaceData) -> Result<(), String> {
+    if data.version != 1 {
+        return Err(format!(
+            "Unsupported workspace format version: {}",
+            data.version
+        ));
+    }
+    if data.workspaces.is_empty() {
+        return Err("At least one workspace is required".into());
+    }
+    let mut ids = HashSet::new();
+    for workspace in &data.workspaces {
+        Uuid::parse_str(&workspace.id).map_err(|_| "Invalid workspace UUID")?;
+        if !ids.insert(&workspace.id) {
+            return Err("Duplicate workspace UUID".into());
+        }
+        if workspace.name.trim().is_empty() {
+            return Err("Workspace name cannot be empty".into());
+        }
+        validate(&workspace.store)?;
+    }
+    if !ids.contains(&data.active_workspace_id) {
+        return Err("Active workspace does not exist".into());
+    }
+    Ok(())
+}
+
 fn scrub_secrets(store: &mut Store) {
     for variable in &mut store.defaults {
         if variable.secret {
@@ -110,29 +137,55 @@ fn scrub_secrets(store: &mut Store) {
     }
 }
 
-#[tauri::command]
-pub fn load_store(app: AppHandle) -> Result<Store, String> {
-    let path = data_path(&app)?;
+fn read_workspaces(path: &Path) -> Result<Option<WorkspaceData>, String> {
     if !path.exists() {
-        return Ok(Store::default());
+        return Ok(None);
     }
-    let data = fs::read(&path).map_err(|e| e.to_string())?;
-    let store: Store =
+    let data = fs::read(path).map_err(|e| e.to_string())?;
+    let value: serde_json::Value =
         serde_json::from_slice(&data).map_err(|e| format!("Saved data is invalid: {e}"))?;
-    validate(&store)?;
-    Ok(store)
+    let workspaces = if value.get("workspaces").is_some() {
+        serde_json::from_value(value).map_err(|e| format!("Saved workspaces are invalid: {e}"))?
+    } else {
+        let store: Store = serde_json::from_value(value)
+            .map_err(|e| format!("Saved workspace is invalid: {e}"))?;
+        validate(&store)?;
+        let id = Uuid::new_v4().to_string();
+        WorkspaceData {
+            version: 1,
+            active_workspace_id: id.clone(),
+            workspaces: vec![Workspace {
+                id,
+                name: "My workspace".into(),
+                store,
+            }],
+        }
+    };
+    validate_workspaces(&workspaces)?;
+    Ok(Some(workspaces))
 }
 
 #[tauri::command]
-pub fn save_store(app: AppHandle, store: Store) -> Result<(), String> {
-    validate(&store)?;
+pub fn load_workspaces(app: AppHandle) -> Result<Option<WorkspaceData>, String> {
     let path = data_path(&app)?;
-    write_local_store(&path, &store)
+    read_workspaces(&path)
 }
 
+#[tauri::command]
+pub fn save_workspaces(app: AppHandle, workspaces: WorkspaceData) -> Result<(), String> {
+    validate_workspaces(&workspaces)?;
+    let path = data_path(&app)?;
+    write_local_data(&path, &workspaces)
+}
+
+#[cfg(test)]
 fn write_local_store(path: &Path, store: &Store) -> Result<(), String> {
+    write_local_data(path, store)
+}
+
+fn write_local_data<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let temp = path.with_extension("json.tmp");
-    let data = serde_json::to_vec_pretty(&store).map_err(|e| e.to_string())?;
+    let data = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -292,6 +345,64 @@ pub async fn export_store(app: AppHandle, mut store: Store) -> Result<bool, Stri
 mod tests {
     use super::*;
     use crate::model::{Collection, Environment, Variable};
+
+    #[test]
+    fn legacy_store_becomes_first_workspace_without_losing_data() {
+        let path = std::env::temp_dir().join(format!("kodama-migrate-{}.json", Uuid::new_v4()));
+        let mut store = Store::default();
+        store.collections.push(Collection {
+            id: Uuid::new_v4().to_string(),
+            name: "Existing API".into(),
+            variables: vec![],
+            folders: vec![],
+            requests: vec![],
+            source: None,
+        });
+        write_local_store(&path, &store).unwrap();
+        let migrated = read_workspaces(&path).unwrap().unwrap();
+        assert_eq!(migrated.workspaces.len(), 1);
+        assert_eq!(
+            migrated.workspaces[0].store.collections[0].name,
+            "Existing API"
+        );
+        assert_eq!(migrated.active_workspace_id, migrated.workspaces[0].id);
+        write_local_data(&path, &migrated).unwrap();
+        let reloaded = read_workspaces(&path).unwrap().unwrap();
+        assert_eq!(
+            reloaded.workspaces[0].store.collections[0].name,
+            "Existing API"
+        );
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn workspace_container_keeps_projects_separate() {
+        let first = Uuid::new_v4().to_string();
+        let second = Uuid::new_v4().to_string();
+        let data = WorkspaceData {
+            version: 1,
+            active_workspace_id: second.clone(),
+            workspaces: vec![
+                Workspace {
+                    id: first,
+                    name: "One".into(),
+                    store: Store::default(),
+                },
+                Workspace {
+                    id: second,
+                    name: "Two".into(),
+                    store: Store::default(),
+                },
+            ],
+        };
+        let path = std::env::temp_dir().join(format!("kodama-workspaces-{}.json", Uuid::new_v4()));
+        write_local_data(&path, &data).unwrap();
+        let loaded = read_workspaces(&path).unwrap().unwrap();
+        assert_eq!(loaded.workspaces.len(), 2);
+        assert_eq!(loaded.workspaces[1].name, "Two");
+        assert_eq!(loaded.active_workspace_id, data.active_workspace_id);
+        fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn reads_linked_source_file_and_reports_its_stamp() {
