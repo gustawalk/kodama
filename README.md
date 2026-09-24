@@ -77,17 +77,20 @@ are not published as GitHub Releases.
   remain disabled until individually trusted.
 - Import common cURL commands and copy a saved request as cURL. Import OpenAPI
   3 or Swagger 2 JSON to create requests with paths, parameters, headers, and
-  example request bodies.
+  example request bodies. In **Settings → Workspace data**, choose whether
+  imported request names use operation summaries or route paths such as
+  `/accounts/:id`. The choice also applies to linked source syncs.
 - Link a collection to an OpenAPI JSON, JavaScript, or TypeScript source file in
   **Settings → Collection settings**. Kodama checks the file every ten seconds while open.
-  In a workspace without collections, **Link OpenAPI file** creates a collection
-  named from the document title and links it in one step.
+  **Create collection from file** creates a collection named from the document
+  title and links it in one step, including in an empty workspace.
   Normal sync adds routes and updates untouched imported fields while keeping
   local edits. **Replace collection** restores the whole collection from the
   current source file after confirmation.
 - A session cookie jar carries cookies between requests and can be cleared from
   the response Cookies tab.
-- Local autosave and light/dark themes. Press Ctrl/Cmd+Enter to send and
+- Local autosave, light/dark themes, and saved folder expansion per workspace.
+  Press Ctrl/Cmd+Enter to send and
   Ctrl/Cmd+S to save.
 
 ## Variables and scripts

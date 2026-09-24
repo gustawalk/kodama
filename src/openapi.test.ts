@@ -37,6 +37,14 @@ describe("OpenAPI import", () => {
     expect(request.url).toBe("https://example.test/api/users/:id");
     expect(JSON.parse(request.body.text)).toEqual({ active: false });
   });
+  test("can use route paths as imported request names", () => {
+    const document = {
+      openapi: "3.0.3", info: { title: "Accounts" },
+      paths: { "/health": { get: { summary: "Check server health" } }, "/accounts/{id}": { get: { summary: "Get one account" } } },
+    };
+    expect(importOpenApi(document).collections[0].requests.map((request) => request.name)).toEqual(["Check server health", "Get one account"]);
+    expect(importOpenApi(document, "path").collections[0].requests.map((request) => request.name)).toEqual(["/health", "/accounts/:id"]);
+  });
   test("uses an editable base URL when the document has no absolute server", () => {
     const store = importOpenApi({ openapi: "3.0.3", info: { title: "Local" }, servers: [{ url: "/v2" }], paths: { "/ping": { get: { responses: { 200: {} } } } } });
     expect(store.collections[0].variables[0].name).toBe("BASE_URL");

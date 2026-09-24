@@ -1143,6 +1143,8 @@ html:not(.dark) .workspace-dialog[data-slot="dialog-content"] { --panel2: #f9fbf
 .settings-theme-options button { min-width: 70px; padding: 6px 12px; border-radius: 5px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .settings-theme-options button:hover { color: var(--text); background: var(--hover); }
 .settings-theme-options button.active { color: var(--text); background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
+.settings-import-option { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.settings-import-option > span { font-size: 11px; font-weight: 600; }
 .settings-section-description { margin: 0; color: var(--muted); font-size: 11px; }
 .settings-collection-heading { display: flex; flex-direction: column; gap: 3px; padding: 8px 2px 0; }
 .settings-collection-heading strong { font-size: 12px; }

@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { VariableField, type ResolvedVariable } from "./VariableField";
 import { variableHasValue } from "./variableResolution";
 import { exportCurl, importCurl } from "./curl";
-import { importOpenApi } from "./openapi";
+import { importOpenApi, type OpenApiRequestNames } from "./openapi";
 import { previewRequestUrl } from "./requestPreview";
 import { parseOpenApiSource, type SourceFile } from "./sourceParser";
 import { syncCollectionSource, type SyncSummary } from "./sourceSync";
@@ -254,7 +254,21 @@ function App() {
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("kodama.theme") === "light" ? "light" : "dark"
   );
-  const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [openApiRequestNames, setOpenApiRequestNames] = useState<OpenApiRequestNames>(() =>
+    localStorage.getItem("kodama.openApiRequestNames") === "path" ? "path" : "summary"
+  );
+  const [collapsedByWorkspace, setCollapsedByWorkspace] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("kodama.collapsedByWorkspace") ?? "{}");
+      return Object.fromEntries(Object.entries(saved).filter(([, ids]) => Array.isArray(ids)).map(([id, ids]) => [id, (ids as unknown[]).filter((value): value is string => typeof value === "string")]));
+    } catch { return {}; }
+  });
+  const collapsed = collapsedByWorkspace[workspaceData.activeWorkspaceId] ?? [];
+  const setCollapsed = (update: React.SetStateAction<string[]>) => setCollapsedByWorkspace((previous) => {
+    const id = workspaceData.activeWorkspaceId;
+    const current = previous[id] ?? [];
+    return { ...previous, [id]: typeof update === "function" ? update(current) : update };
+  });
   const [renameDialog, setRenameDialog] = useState<{ name: string; apply: (name: string) => void } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteDialog, setDeleteDialog] = useState<{ name: string; description?: string; apply: () => void } | null>(null);
@@ -295,6 +309,8 @@ function App() {
     localStorage.setItem("kodama.theme", theme);
     return () => document.documentElement.classList.remove("dark");
   }, [theme]);
+  useEffect(() => { localStorage.setItem("kodama.openApiRequestNames", openApiRequestNames); }, [openApiRequestNames]);
+  useEffect(() => { localStorage.setItem("kodama.collapsedByWorkspace", JSON.stringify(collapsedByWorkspace)); }, [collapsedByWorkspace]);
 
   useEffect(() => {
     invoke<WorkspaceData | null>("load_workspaces").then((data) => {
@@ -372,7 +388,7 @@ function App() {
     void checkSources();
     const timer = window.setInterval(() => { void checkSources(); }, 10000);
     return () => { stopped = true; window.clearInterval(timer); };
-  }, [ready, workspaceData.activeWorkspaceId]);
+  }, [ready, workspaceData.activeWorkspaceId, openApiRequestNames]);
 
   const current = findRequest(store, selectedId);
   const request = current?.request;
@@ -794,7 +810,7 @@ function App() {
     try {
       const document = await invoke<unknown | null>("import_openapi_file");
       if (!document) return;
-      const imported = importOpenApi(document);
+      const imported = importOpenApi(document, openApiRequestNames);
       setStore((previous) => ({ ...previous, collections: [...previous.collections, ...imported.collections] }));
       const first = imported.collections[0].requests[0];
       if (first) open(first.id);
@@ -803,7 +819,7 @@ function App() {
   }
   async function prepareSourceFile(file: SourceFile) {
     const parsed = await parseOpenApiSource(file);
-    const imported = importOpenApi(parsed.document).collections[0];
+    const imported = importOpenApi(parsed.document, openApiRequestNames).collections[0];
     const used = new Set(imported.requests.flatMap((item) => [item.url, item.body.text, ...item.query.flatMap((row) => [row.key, row.value]), ...item.pathParams.map((row) => row.value), ...item.headers.flatMap((row) => [row.key, row.value])]
       .flatMap((text) => [...text.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)].map((match) => match[1]))));
     const placeholders = parsed.placeholders.filter((name) => used.has(name));
@@ -949,6 +965,7 @@ function App() {
     if (wasActive && !await clearWorkspaceCookies()) { setWorkspaceDialogOpen(true); return; }
     if (wasActive) activeWorkspaceRef.current = remaining[0].id;
     setWorkspaceData((previous) => ({ ...previous, workspaces: previous.workspaces.filter((item) => item.id !== id), activeWorkspaceId: wasActive ? remaining[0].id : previous.activeWorkspaceId }));
+    setCollapsedByWorkspace((previous) => { const next = { ...previous }; delete next[id]; return next; });
     if (wasActive) resetWorkspaceSession(remaining[0].store);
     setWorkspaceDialogOpen(true);
   }
@@ -1963,6 +1980,14 @@ function App() {
           </div>
           <div className="source-config-section">
             <div className="source-config-heading"><strong>Workspace data</strong><span>{activeWorkspace.name}</span></div>
+            <div className="settings-import-option">
+              <span>Imported request names</span>
+              <div className="settings-theme-options" role="group" aria-label="Imported request names">
+                <button className={openApiRequestNames === "summary" ? "active" : ""} aria-pressed={openApiRequestNames === "summary"} onClick={() => setOpenApiRequestNames("summary")}>Summary</button>
+                <button className={openApiRequestNames === "path" ? "active" : ""} aria-pressed={openApiRequestNames === "path"} onClick={() => setOpenApiRequestNames("path")}>Route path</button>
+              </div>
+              <small>Used for new OpenAPI imports and linked source syncs.</small>
+            </div>
             <p className="settings-section-description">Import requests into this workspace or export it as a Kodama file.</p>
             <div className="source-actions">
               <button className="subtle" onClick={() => { setConfigOpen(false); void importFile(); }}>Import workspace</button>

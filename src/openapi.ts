@@ -6,7 +6,9 @@ const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const string = (value: unknown): string => typeof value === "string" ? value : "";
 const methods = new Set(["get", "post", "put", "patch", "delete", "head", "options", "trace"]);
 
-export function importOpenApi(document: unknown): Store {
+export type OpenApiRequestNames = "summary" | "path";
+
+export function importOpenApi(document: unknown, requestNames: OpenApiRequestNames = "summary"): Store {
   const spec = object(document);
   if (!string(spec.openapi).startsWith("3.") && spec.swagger !== "2.0") {
     throw new Error("Choose an OpenAPI 3 or Swagger 2 JSON document");
@@ -46,7 +48,10 @@ export function importOpenApi(document: unknown): Store {
     for (const [verb, operationValue] of Object.entries(pathItem)) {
       if (!methods.has(verb)) continue;
       const operation = object(operationValue);
-      const route = newRequest(string(operation.summary) || string(operation.operationId) || `${verb.toUpperCase()} ${path}`);
+      const pathText = path.replace(/\{([^{}]+)\}/g, ":$1");
+      const route = newRequest(requestNames === "path"
+        ? pathText
+        : string(operation.summary) || string(operation.operationId) || `${verb.toUpperCase()} ${path}`);
       route.method = verb.toUpperCase();
       route.sourceKey = `${route.method} ${path}`;
       const requirements = list(operation.security === undefined ? spec.security : operation.security);
@@ -61,7 +66,6 @@ export function importOpenApi(document: unknown): Store {
       const postScript = string(operation["x-kodama-post-response"]);
       if (postScript) { route.postScript = postScript; route.trusted = false; }
       const localServer = string(object(list(operation.servers)[0]).url) || string(object(list(pathItem.servers)[0]).url);
-      const pathText = path.replace(/\{([^{}]+)\}/g, ":$1");
       const server = (localServer || base).replace(/\/$/, "");
       for (const match of server.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)) {
         if (!collection.variables.some((variable) => variable.name === match[1])) {
