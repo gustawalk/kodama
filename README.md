@@ -19,7 +19,7 @@ The starter workspace includes a **Kodama demo** collection. In another
 terminal, run:
 
 ```sh
-bun examples/demo-server.js
+bun run demo:server
 ```
 
 In Kodama, run **Login** and then **Protected route**. Login's post-response
@@ -27,6 +27,17 @@ script saves the returned token to `_.TOKEN`; Protected route uses
 `Bearer {{_.TOKEN}}`. Run Login again to replace the token without editing
 Protected route. The demo server listens only on `127.0.0.1:8787` and accepts
 `demo` / `demo`.
+
+The demo also has account creation, search, pagination, update, and deletion;
+token logout; JSON and header echo; cookie inspection; and selectable HTTP
+statuses. Import [demo-openapi.json](examples/demo-openapi.json) with **Import
+OpenAPI**, or link that file to a collection in Collection settings. The server
+also serves it at `http://127.0.0.1:8787/openapi.json`. The imported Login route
+includes a `x-kodama-post-response` script to save `_.TOKEN`; review and trust
+that script once, then run Login. Protected routes import with Bearer
+`{{_.TOKEN}}` already configured. Accounts and tokens exist only in server memory
+and reset on restart. No demo requests or account data are written to disk by
+the example server.
 
 For a production build on the current host:
 
