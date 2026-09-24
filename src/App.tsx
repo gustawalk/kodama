@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast, Toaster } from "sonner";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, GripVertical } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -254,6 +254,8 @@ function App() {
   });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [tabDropTarget, setTabDropTarget] = useState<{ id: string; after: boolean } | null>(null);
   const draggingRequest = useRef<{ requestId: string; collectionId: string } | null>(null);
   const [headerVariable, setHeaderVariable] = useState<{ name: string; value: string } | null>(null);
 
@@ -1117,26 +1119,40 @@ function App() {
               return item && (
                 <button
                   key={id}
-                  className={`tab ${selectedId === id ? "active" : ""}`}
+                  className={`tab${selectedId === id ? " active" : ""}${draggingTabId === id ? " dragging" : ""}${tabDropTarget?.id === id && draggingTabId !== id ? (tabDropTarget.after ? " drop-after" : " drop-before") : ""}`}
+                  title="Drag to reorder tabs"
                   onClick={() => open(id)}
                   draggable
-                  onDragStart={(event) => { event.dataTransfer.setData("text/plain", id); event.dataTransfer.effectAllowed = "move"; }}
-                  onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
+                  onDragStart={(event) => { setDraggingTabId(id); event.dataTransfer.setData("text/plain", id); event.dataTransfer.effectAllowed = "move"; }}
+                  onDragEnd={() => { setDraggingTabId(null); setTabDropTarget(null); }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setTabDropTarget({ id, after: event.clientX > rect.left + rect.width / 2 });
+                  }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    const from = tabs.indexOf(event.dataTransfer.getData("text/plain"));
-                    const to = tabs.indexOf(id);
-                    if (from < 0 || to < 0 || from === to) return;
+                    const from = tabs.indexOf(draggingTabId ?? event.dataTransfer.getData("text/plain"));
+                    const target = tabs.indexOf(id);
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const after = event.clientX > rect.left + rect.width / 2;
+                    setDraggingTabId(null);
+                    setTabDropTarget(null);
+                    if (from < 0 || target < 0 || from === target) return;
                     const reordered = [...tabs];
-                    reordered.splice(to, 0, reordered.splice(from, 1)[0]);
+                    const [moving] = reordered.splice(from, 1);
+                    const insertion = target + (after ? 1 : 0) - (from < target ? 1 : 0);
+                    reordered.splice(insertion, 0, moving);
                     setTabs(reordered);
                   }}
                   onContextMenu={(event) => showTabMenu(event, id)}
                 >
+                  <GripVertical className="tab-grip" size={14} aria-hidden="true" />
                   <span className={`method ${item.method.toLowerCase()}`}>
                     {item.method}
                   </span>
-                  {item.name}
+                  <span className="tab-name">{item.name}</span>
                   {!saved && selectedId === id && (
                     <span className="unsaved-dot">•</span>
                   )}
