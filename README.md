@@ -36,9 +36,9 @@ bun run tauri build
 
 ## Features
 
-- Collections, folders, saved requests, tabs, search, duplication, ordering
-  controls, and session history.
-- HTTP methods, URL and query parameters, enabled headers, Basic and Bearer
+- Collections, folders, saved requests, tabs, search, duplication, drag ordering,
+  and expandable session history with URL, timestamp, size, and response access.
+- HTTP methods, `:id` path parameters, URL and query parameters, enabled headers, Basic and Bearer
   auth, JSON/text bodies, URL-encoded forms, and text multipart fields.
 - Response status, headers, formatted JSON/text, timing, size, and binary
   download. Search and copy response text, and inspect session cookies.
@@ -46,7 +46,9 @@ bun run tauri build
   TLS certificate verification.
 - Pre-request and post-response JavaScript scripts with limited APIs and runtime
   variables.
-- Environments, collection variables, global defaults, and a variable inspector.
+- Environments, collection variables, global defaults, and an editable runtime
+  variable inspector. Response headers can be saved to runtime variables from
+  the Headers response tab.
 - Variable suggestions appear while typing `{{...}}`; ten are visible before
   scrolling. Hover a suggestion or variable to see its value.
 - JSON is the default body mode for new requests. The body and script editors
@@ -54,7 +56,9 @@ bun run tauri build
   diagnostics. Empty JSON bodies send no body. Use **Format JSON** to pretty-print.
 - Versioned Kodama JSON import/export with merge or replace. Imported scripts
   remain disabled until individually trusted.
-- Import common cURL commands and copy a saved request as cURL.
+- Import common cURL commands and copy a saved request as cURL. Import OpenAPI
+  3 or Swagger 2 JSON to create requests with paths, parameters, headers, and
+  example request bodies.
 - A session cookie jar carries cookies between requests and can be cleared from
   the response Cookies tab.
 - Local autosave and light/dark themes. Press Ctrl/Cmd+Enter to send and
@@ -74,13 +78,23 @@ have browser, filesystem, or network APIs. Each script gets:
   runtime variables only if the script finishes successfully.
 - `request`: mutable request object. Pre-request changes are used for the
   outgoing request.
-- `response` (post-response only): `status`, `headers`, `text()`, and `json()`.
+- `response` (post-response only): `status`, `headers`, `text()`, `json()`, and
+  `header(name)` for case insensitive response header lookup.
 
 Example post-response script:
 
 ```js
 _.TOKEN = response.json().token;
+_.NEXT = response.header("X-Next-Token");
 ```
+
+Use `:id` in a URL path, such as `/products/:id`, to create a Path parameters
+field in the Params tab. Kodama URL encodes its value before sending. Query
+parameters remain separate rows in the same tab. For generated sample data,
+use `{{$random.uuid}}`, `{{$random.firstName}}`, `{{$random.lastName}}`,
+`{{$random.fullName}}`, `{{$random.email}}`, `{{$random.username}}`,
+`{{$random.integer}}`, or `{{$random.boolean}}` in request fields. Values are
+generated for each send and can be combined with ordinary variables.
 
 The request flow is: choose scopes, run pre-request script, interpolate all
 fields, validate, send, run post-response script, then commit staged runtime
