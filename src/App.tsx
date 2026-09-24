@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { VariableField, type ResolvedVariable } from "./VariableField";
 import { exportCurl, importCurl } from "./curl";
 import { importOpenApi } from "./openapi";
+import { previewRequestUrl } from "./requestPreview";
 import type {
   ApiRequest,
   Collection,
@@ -358,6 +359,7 @@ function App() {
     });
     return values;
   }, [store.defaults, collection, environment, runtime]);
+  const urlPreview = request ? previewRequestUrl(request, resolvedVariables) : "";
   const visibleCollections = useMemo(
     () =>
       store.collections.map((item) => ({
@@ -1274,6 +1276,10 @@ function App() {
                       {busy ? "Cancel" : "Send"} ↗
                     </button>
                   </div>
+                  {urlPreview && <div className="url-preview" aria-label="URL preview">
+                    <span>Preview</span>
+                    <code title={urlPreview}>{urlPreview}</code>
+                  </div>}
                   {!request.trusted &&
                     (request.preScript || request.postScript) && (
                     <div className="trust">

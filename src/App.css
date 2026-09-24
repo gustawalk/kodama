@@ -542,6 +542,9 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
   font-family: 'JetBrains Mono',monospace;
   font-size: 12px;
 }
+.url-preview { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin: 7px 1px 0; font-size: 10px; line-height: 1.4; }
+.url-preview > span { flex: none; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; }
+.url-preview code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
 .method-select {
   width: 103px;
   color-scheme: inherit;
