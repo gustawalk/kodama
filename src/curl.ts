@@ -81,7 +81,7 @@ export function exportCurl(request: ApiRequest): string {
     url = url.replace(`/:${row.key}`, `/${encodeURIComponent(row.value)}`);
   });
   const query = request.query.filter((row) => row.enabled && row.key);
-  if (query.length) url += `${url.includes("?") ? "&" : "?"}${new URLSearchParams(query.map((row) => [row.key, row.value]))}`;
+  if (query.length) url += `${url.includes("?") ? "&" : "?"}${new URLSearchParams(query.map((row) => [row.key, row.value])).toString().replace(/\+/g, "%20")}`;
   const parts = ["curl", "-X", request.method, quote(url)];
   request.headers.filter((item) => item.enabled && item.key).forEach((item) => parts.push("-H", quote(`${item.key}: ${item.value}`)));
   if (request.auth.kind === "basic") parts.push("-u", quote(`${request.auth.username}:${request.auth.password}`));

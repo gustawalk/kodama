@@ -149,6 +149,24 @@ fn resolve_entries(
         .collect()
 }
 
+fn append_query_pairs(url: &mut Url, query: Vec<(String, String)>) -> Result<(), String> {
+    if query.is_empty() {
+        return Ok(());
+    }
+    let mut encoded_url = Url::parse("https://kodama.invalid/").map_err(|e| e.to_string())?;
+    encoded_url.query_pairs_mut().extend_pairs(query);
+    let encoded = encoded_url.query().unwrap_or("").replace('+', "%20");
+    let existing = url.query().unwrap_or("");
+    let separator = if existing.is_empty() || existing.ends_with('&') {
+        ""
+    } else {
+        "&"
+    };
+    let combined = format!("{existing}{separator}{encoded}");
+    url.set_query(Some(&combined));
+    Ok(())
+}
+
 fn changed_runtime(
     previous: &HashMap<String, String>,
     updated: &HashMap<String, String>,
@@ -200,9 +218,7 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         return Err("Only HTTP and HTTPS URLs are supported".into());
     }
     let query = resolve_entries(&request.query, &variables, &runtime)?;
-    if !query.is_empty() {
-        url.query_pairs_mut().extend_pairs(query);
-    }
+    append_query_pairs(&mut url, query)?;
     let method = Method::from_bytes(request.method.as_bytes())
         .map_err(|e| format!("Invalid HTTP method: {e}"))?;
     let timeout = request.timeout_ms.unwrap_or(30_000).clamp(100, 300_000);
@@ -387,6 +403,16 @@ mod tests {
         assert!(Uuid::parse_str(&generated_alias).is_ok());
         assert!(interpolate("{{$random.unknown}}", &HashMap::new(), &HashMap::new()).is_err());
         assert!(interpolate("{{random.unknown}}", &HashMap::new(), &HashMap::new()).is_err());
+    }
+
+    #[test]
+    fn query_spaces_use_percent_20_without_changing_existing_query() {
+        let mut url = Url::parse("https://example.test/search?existing=a+b").unwrap();
+        append_query_pairs(&mut url, vec![("q".into(), "full+ query".into())]).unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://example.test/search?existing=a+b&q=full%2B%20query"
+        );
     }
 
     #[test]

@@ -23,7 +23,7 @@ export function previewRequestUrl(request: ApiRequest, variables: Record<string,
     const value = resolve(row.value);
     return value ? `/${unresolved.test(value) ? value : encodeURIComponent(value)}` : segment;
   });
-  const encode = (value: string) => unresolved.test(value) ? value : new URLSearchParams([["value", value]]).toString().slice(6);
+  const encode = (value: string) => unresolved.test(value) ? value : new URLSearchParams([["value", value]]).toString().slice(6).replace(/\+/g, "%20");
   const query = request.query
     .filter((row) => row.enabled && row.key.trim())
     .map((row) => `${encode(resolve(row.key))}=${encode(resolve(row.value))}`)

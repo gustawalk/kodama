@@ -15,7 +15,7 @@ describe("request URL preview", () => {
     expect(previewRequestUrl(request, {
       BASE_URL: { value: "https://api.example.test", source: "Environment", secret: false },
       SEARCH: { value: "red lamp", source: "Runtime", secret: false },
-    })).toBe("https://api.example.test/users/a%2Fb%20c?include=profile&page=2&q=red+lamp#details");
+    })).toBe("https://api.example.test/users/a%2Fb%20c?include=profile&page=2&q=red%20lamp#details");
   });
 
   test("keeps unfilled path parameters and unresolved variables visible", () => {
@@ -39,5 +39,12 @@ describe("request URL preview", () => {
     request.pathParams = [{ ...entry(), key: "id", value: "{{random.uuid}}" }];
     expect(previewRequestUrl(request, { "$random.uuid": { value: "Generated when sent", source: "Random", secret: false } }))
       .toBe("https://api.example.test/items/{{random.uuid}}");
+  });
+
+  test("encodes spaces as %20 and literal plus signs as %2B", () => {
+    const request = newRequest();
+    request.url = "https://api.example.test/search?existing=a+b";
+    request.query = [{ ...entry(), key: "q", value: "full+ query" }];
+    expect(previewRequestUrl(request, {})).toBe("https://api.example.test/search?existing=a+b&q=full%2B%20query");
   });
 });

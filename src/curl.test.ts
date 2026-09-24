@@ -18,6 +18,6 @@ describe("cURL handoff", () => {
     const request = importCurl("curl 'https://example.test/products/:id'");
     request.pathParams = [{ id: "path", key: "id", value: "a/b", enabled: true }];
     request.query = [{ id: "query", key: "expand", value: "full details", enabled: true }];
-    expect(exportCurl(request)).toContain("https://example.test/products/a%2Fb?expand=full+details");
+    expect(exportCurl(request)).toContain("https://example.test/products/a%2Fb?expand=full%20details");
   });
 });
