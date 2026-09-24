@@ -1,7 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { importOpenApi } from "./openapi";
+import demoDocument from "../examples/demo-openapi.json";
 
 describe("OpenAPI import", () => {
+  test("imports the demo workflow with Bearer auth and a reviewable login script", () => {
+    const collection = importOpenApi(demoDocument).collections[0];
+    expect(collection.requests).toHaveLength(14);
+    const login = collection.requests.find((request) => request.sourceKey === "POST /login");
+    const protectedRoute = collection.requests.find((request) => request.sourceKey === "GET /protected");
+    expect(login?.body.text).toContain('"username": "demo"');
+    expect(login?.postScript).toBe("_.TOKEN = response.json().token;");
+    expect(login?.trusted).toBe(false);
+    expect(protectedRoute?.auth).toMatchObject({ kind: "bearer", token: "{{_.TOKEN}}" });
+    expect(collection.requests.find((request) => request.sourceKey === "DELETE /accounts/{id}")?.pathParams[0].value).toBe("acc-1");
+  });
   test("imports OpenAPI 3 paths, parameters, tags, and JSON examples", () => {
     const store = importOpenApi({
       openapi: "3.0.3", info: { title: "Catalog" }, servers: [{ url: "https://api.example.test/v1" }],

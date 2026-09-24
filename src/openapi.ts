@@ -49,6 +49,17 @@ export function importOpenApi(document: unknown): Store {
       const route = newRequest(string(operation.summary) || string(operation.operationId) || `${verb.toUpperCase()} ${path}`);
       route.method = verb.toUpperCase();
       route.sourceKey = `${route.method} ${path}`;
+      const requirements = list(operation.security === undefined ? spec.security : operation.security);
+      const securitySchemes = object(object(spec.components).securitySchemes);
+      if (requirements.some((requirement) => Object.keys(object(requirement)).some((name) => {
+        const scheme = ref(securitySchemes[name]);
+        return scheme.type === "http" && string(scheme.scheme).toLowerCase() === "bearer";
+      }))) {
+        route.auth.kind = "bearer";
+        route.auth.token = "{{_.TOKEN}}";
+      }
+      const postScript = string(operation["x-kodama-post-response"]);
+      if (postScript) { route.postScript = postScript; route.trusted = false; }
       const localServer = string(object(list(operation.servers)[0]).url) || string(object(list(pathItem.servers)[0]).url);
       const pathText = path.replace(/\{([^{}]+)\}/g, ":$1");
       const server = (localServer || base).replace(/\/$/, "");

@@ -1,0 +1,78 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Kodama Demo API",
+    "version": "1.0.0",
+    "description": "A local, in-memory API for trying Kodama. Accounts and tokens reset when the demo server restarts. Start with POST /login using demo/demo. Its Kodama post-response example stores the token in _.TOKEN for protected routes."
+  },
+  "servers": [{ "url": "http://127.0.0.1:8787", "description": "Local Bun demo server" }],
+  "tags": [
+    { "name": "System", "description": "Health and API description" },
+    { "name": "Auth", "description": "Short-lived Bearer token workflow" },
+    { "name": "Accounts", "description": "Session-only account CRUD" },
+    { "name": "Diagnostics", "description": "Inspect JSON, headers, cookies, and response statuses" }
+  ],
+  "components": {
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "UUID", "description": "Token returned by POST /login; expires after 15 minutes." } },
+    "schemas": {
+      "Error": { "type": "object", "required": ["error"], "properties": { "error": { "type": "object", "required": ["code", "message"], "properties": { "code": { "type": "string", "example": "not_found" }, "message": { "type": "string", "example": "Account not found" } } } } },
+      "Account": { "type": "object", "required": ["id", "username", "name", "email", "createdAt"], "properties": { "id": { "type": "string", "example": "acc-demo" }, "username": { "type": "string", "example": "demo" }, "name": { "type": "string", "example": "Demo User" }, "email": { "type": "string", "format": "email", "example": "demo@example.test" }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "AccountCreate": { "type": "object", "required": ["username", "password", "name"], "additionalProperties": false, "properties": { "username": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{2,23}$", "example": "alex" }, "password": { "type": "string", "format": "password", "minLength": 4, "maxLength": 72, "example": "demo1234" }, "name": { "type": "string", "minLength": 1, "maxLength": 80, "example": "Alex Lee" }, "email": { "type": "string", "format": "email", "example": "alex@example.test" } } },
+      "AccountPatch": { "type": "object", "minProperties": 1, "additionalProperties": false, "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 80, "example": "Alex Rivera" }, "email": { "type": "string", "format": "email", "example": "alex.rivera@example.test" }, "password": { "type": "string", "format": "password", "minLength": 4, "maxLength": 72 } } },
+      "AccountList": { "type": "object", "required": ["data", "total", "limit", "offset"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } }, "total": { "type": "integer", "example": 1 }, "limit": { "type": "integer", "example": 10 }, "offset": { "type": "integer", "example": 0 } } },
+      "LoginRequest": { "type": "object", "required": ["username", "password"], "properties": { "username": { "type": "string", "example": "demo" }, "password": { "type": "string", "format": "password", "example": "demo" } } },
+      "LoginResponse": { "type": "object", "required": ["token", "tokenType", "expiresInSeconds", "expiresAt"], "properties": { "token": { "type": "string", "format": "uuid" }, "tokenType": { "type": "string", "enum": ["Bearer"] }, "expiresInSeconds": { "type": "integer", "example": 900 }, "expiresAt": { "type": "string", "format": "date-time" } } },
+      "Health": { "type": "object", "required": ["status", "service", "timestamp"], "properties": { "status": { "type": "string", "enum": ["ok"] }, "service": { "type": "string", "example": "kodama-demo" }, "timestamp": { "type": "string", "format": "date-time" } } },
+      "Echo": { "type": "object", "required": ["requestId", "body", "note", "receivedAt"], "properties": { "requestId": { "type": "string", "format": "uuid" }, "body": {}, "note": { "type": "string", "nullable": true }, "receivedAt": { "type": "string", "format": "date-time" } } },
+      "StatusResult": { "type": "object", "required": ["status", "message"], "properties": { "status": { "type": "integer", "example": 418 }, "message": { "type": "string", "example": "Demo response 418" } } }
+    },
+    "responses": {
+      "BadRequest": { "description": "Invalid JSON, field, query, or status code", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unauthorized": { "description": "Missing, invalid, or expired token", "headers": { "WWW-Authenticate": { "schema": { "type": "string" }, "description": "Bearer challenge" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Unknown account or route", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    }
+  },
+  "paths": {
+    "/health": { "get": { "tags": ["System"], "operationId": "getHealth", "summary": "Check server health", "responses": { "200": { "description": "Server is ready", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } } } } },
+    "/openapi.json": { "get": { "tags": ["System"], "operationId": "getOpenApi", "summary": "Download this OpenAPI document", "responses": { "200": { "description": "OpenAPI 3.0.3 JSON", "content": { "application/json": { "schema": { "type": "object" } } } } } } },
+    "/login": {
+      "post": {
+        "tags": ["Auth"], "operationId": "login", "summary": "Log in and receive a 15-minute token",
+        "description": "Use demo/demo or credentials from a newly created account. Run again after expiry; the post-response script overwrites _.TOKEN. The same token is also in X-Session-Token to demonstrate response-header extraction.",
+        "x-kodama-post-response": "_.TOKEN = response.json().token;",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" }, "example": { "username": "demo", "password": "demo" } } } },
+        "responses": { "200": { "description": "Authenticated", "headers": { "X-Session-Token": { "description": "Same token as the response body", "schema": { "type": "string", "format": "uuid" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "description": "Invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } } }
+      }
+    },
+    "/logout": { "post": { "tags": ["Auth"], "operationId": "logout", "summary": "Invalidate the current token", "security": [{ "bearerAuth": [] }], "responses": { "204": { "description": "Logged out" }, "401": { "$ref": "#/components/responses/Unauthorized" } } } },
+    "/me": { "get": { "tags": ["Auth"], "operationId": "getMe", "summary": "Get the account behind the token", "security": [{ "bearerAuth": [] }], "responses": { "200": { "description": "Current account without password", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } } } },
+    "/protected": { "get": { "tags": ["Auth"], "operationId": "getProtected", "summary": "Check Bearer authorization", "security": [{ "bearerAuth": [] }], "responses": { "200": { "description": "Token accepted", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string", "example": "Authorized" }, "tokenAccepted": { "type": "boolean", "example": true }, "accountId": { "type": "string", "example": "acc-demo" } } } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } } } },
+    "/accounts": {
+      "get": {
+        "tags": ["Accounts"], "operationId": "listAccounts", "summary": "Search and paginate accounts", "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "q", "in": "query", "description": "Case-insensitive username or name search", "schema": { "type": "string" }, "example": "demo" },
+          { "name": "limit", "in": "query", "description": "Page size, 1 to 100", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 } },
+          { "name": "offset", "in": "query", "description": "Number of matching accounts to skip", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "responses": { "200": { "description": "Page of accounts", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountList" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      },
+      "post": {
+        "tags": ["Accounts"], "operationId": "createAccount", "summary": "Create an in-memory account", "description": "The new account can log in immediately. It disappears when the server restarts.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountCreate" }, "example": { "username": "alex", "password": "demo1234", "name": "Alex Lee", "email": "alex@example.test" } } } },
+        "responses": { "201": { "description": "Created account without password", "headers": { "Location": { "description": "Account resource path", "schema": { "type": "string", "example": "/accounts/acc-1" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "description": "Username already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } } }
+      }
+    },
+    "/accounts/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "description": "Account ID, for example acc-demo or acc-1", "schema": { "type": "string" }, "example": "acc-demo" }],
+      "get": { "tags": ["Accounts"], "operationId": "getAccount", "summary": "Get one account", "security": [{ "bearerAuth": [] }], "responses": { "200": { "description": "Account without password", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "patch": { "tags": ["Accounts"], "operationId": "updateAccount", "summary": "Update account fields", "security": [{ "bearerAuth": [] }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountPatch" }, "example": { "name": "Alex Rivera" } } } }, "responses": { "200": { "description": "Updated account", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "delete": { "tags": ["Accounts"], "operationId": "deleteAccount", "summary": "Delete an account", "description": "The built-in acc-demo account cannot be deleted. Other accounts and their tokens are removed.", "security": [{ "bearerAuth": [] }], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "example": "acc-1" }], "responses": { "204": { "description": "Account deleted" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "description": "Built-in demo account cannot be deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/diagnostics/echo": {
+      "post": { "tags": ["Diagnostics"], "operationId": "echoJson", "summary": "Echo JSON and a custom header", "description": "Send X-Demo-Note and inspect the returned X-Request-Id response header.", "parameters": [{ "name": "X-Demo-Note", "in": "header", "description": "Optional note echoed in the response", "schema": { "type": "string" }, "example": "from Kodama" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true }, "example": { "hello": "world", "count": 3 } } } }, "responses": { "200": { "description": "Echoed JSON", "headers": { "X-Request-Id": { "schema": { "type": "string", "format": "uuid" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Echo" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/diagnostics/cookies": { "get": { "tags": ["Diagnostics"], "operationId": "inspectCookies", "summary": "Set and inspect a session cookie", "description": "Send twice. The first response sets kodama_demo; the next request should send it back through Kodama's cookie jar.", "responses": { "200": { "description": "Cookies received", "headers": { "Set-Cookie": { "schema": { "type": "string" }, "description": "kodama_demo=seen" } }, "content": { "application/json": { "schema": { "type": "object", "properties": { "receivedCookie": { "type": "string", "nullable": true }, "hasDemoCookie": { "type": "boolean", "example": true } } } } } } } } },
+    "/diagnostics/status/{code}": { "parameters": [{ "name": "code", "in": "path", "required": true, "description": "One of 200, 201, 400, 404, 418, or 500", "schema": { "type": "integer", "enum": [200, 201, 400, 404, 418, 500] }, "example": 418 }], "get": { "tags": ["Diagnostics"], "operationId": "getStatus", "summary": "Return a chosen HTTP status", "responses": { "200": { "description": "Chosen 200 response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResult" } } } }, "201": { "description": "Chosen 201 response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResult" } } } }, "400": { "description": "Chosen 400 response or unsupported code", "content": { "application/json": { "schema": { "oneOf": [{ "$ref": "#/components/schemas/StatusResult" }, { "$ref": "#/components/schemas/Error" }] } } } }, "404": { "description": "Chosen 404 response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResult" } } } }, "418": { "description": "Chosen 418 response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResult" } } } }, "500": { "description": "Chosen 500 response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResult" } } } } } } }
+  }
+}

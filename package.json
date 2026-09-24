@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "demo:server": "bun examples/demo-server.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
