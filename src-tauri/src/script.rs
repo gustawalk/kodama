@@ -41,7 +41,7 @@ pub fn run_script(
     let variables_json = serde_json::to_string(variables).map_err(|e| e.to_string())?;
     let request_json = serde_json::to_string(request).map_err(|e| e.to_string())?;
     let program = format!(
-        "(() => {{\nconst _ = {variables_json};\nlet request = {request_json};\nconst rawResponse = {response_json};\nconst response = rawResponse && {{ status: rawResponse.status, headers: rawResponse.headers, text: () => rawResponse.body, json: () => JSON.parse(rawResponse.body) }};\n{source}\nreturn JSON.stringify({{ variables: _, request }});\n}})()"
+        "(() => {{\nconst _ = {variables_json};\nlet request = {request_json};\nconst rawResponse = {response_json};\nconst response = rawResponse && {{ status: rawResponse.status, headers: rawResponse.headers, header: (name) => rawResponse.headers.find(([key]) => key.toLowerCase() === String(name).toLowerCase())?.[1] ?? null, text: () => rawResponse.body, json: () => JSON.parse(rawResponse.body) }};\n{source}\nreturn JSON.stringify({{ variables: _, request }});\n}})()"
     );
     let mut context = Context::default();
     context
@@ -81,6 +81,7 @@ mod tests {
             url: "https://example.test".into(),
             folder_id: None,
             query: vec![],
+            path_params: vec![],
             headers: vec![],
             auth: Auth::default(),
             body: Body::default(),
@@ -121,5 +122,23 @@ mod tests {
     #[test]
     fn loop_is_limited() {
         assert!(run_script("while (true) {}", &HashMap::new(), &request(), None).is_err());
+    }
+
+    #[test]
+    fn response_header_lookup_is_case_insensitive() {
+        let headers = [("X-Session-Token".into(), "abc123".into())];
+        let response = ScriptResponse {
+            status: 200,
+            headers: &headers,
+            body: "{}",
+        };
+        let output = run_script(
+            "_.TOKEN = response.header('x-session-token')",
+            &HashMap::new(),
+            &request(),
+            Some(&response),
+        )
+        .unwrap();
+        assert_eq!(output.variables["TOKEN"], "abc123");
     }
 }

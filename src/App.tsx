@@ -1,12 +1,14 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast, Toaster } from "sonner";
+import { Eye, EyeOff } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { VariableField, type ResolvedVariable } from "./VariableField";
 import { exportCurl, importCurl } from "./curl";
+import { importOpenApi } from "./openapi";
 import type {
   ApiRequest,
   Collection,
@@ -40,6 +42,7 @@ const findRequest = (store: Store, id: string | null) =>
   store.collections.flatMap((collection) =>
     collection.requests.map((request) => ({ collection, request }))
   ).find((item) => item.request.id === id);
+const pathParamNames = (url: string) => [...new Set([...url.split(/[?#]/, 1)[0].matchAll(/\/:([A-Za-z_][\w]*)\b/g)].map((match) => match[1]))];
 const collectionIds = (
   item: Collection,
 ) => [
@@ -49,6 +52,7 @@ const collectionIds = (
   ...item.requests.flatMap((value) => [
     value.id,
     ...value.query.map((row) => row.id),
+    ...(value.pathParams ?? []).map((row) => row.id),
     ...value.headers.map((row) => row.id),
     ...value.body.fields.map((row) => row.id),
   ]),
@@ -180,7 +184,7 @@ function VariableEditor(
             placeholder="Value"
             onChange={(event) => edit(row.id, "value", event.target.value)}
           />
-          <button className="icon" aria-label={shown.includes(row.id) ? "Hide variable value" : "Show variable value"} title={shown.includes(row.id) ? "Hide value" : "Show value"} onClick={() => setShown((previous) => previous.includes(row.id) ? previous.filter((id) => id !== row.id) : [...previous, row.id])}>◉</button>
+          <button className="icon" aria-label={shown.includes(row.id) ? "Hide variable value" : "Show variable value"} title={shown.includes(row.id) ? "Hide value" : "Show value"} onClick={() => setShown((previous) => previous.includes(row.id) ? previous.filter((id) => id !== row.id) : [...previous, row.id])}>{shown.includes(row.id) ? <EyeOff size={15} /> : <Eye size={15} />}</button>
           <label className="secret-toggle" title="Secret values stay hidden in variable editors">
             <input
               type="checkbox"
@@ -228,8 +232,9 @@ function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<
-    { id: string; name: string; method: string; status: number; time: number }[]
+    { id: string; requestId: string; name: string; method: string; status: number | null; time: number; url: string; size: number; date: string; headerCount: number; response: RunResult | null; error?: string }[]
   >([]);
+  const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<Store | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("kodama.theme") === "light" ? "light" : "dark"
@@ -249,6 +254,8 @@ function App() {
   });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const draggingRequest = useRef<{ requestId: string; collectionId: string } | null>(null);
+  const [headerVariable, setHeaderVariable] = useState<{ name: string; value: string } | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -343,6 +350,9 @@ function App() {
       };
       values[name] = item;
       values[`_.${name}`] = item;
+    });
+    ["uuid", "firstName", "lastName", "fullName", "email", "username", "integer", "boolean"].forEach((name) => {
+      values[`$random.${name}`] = { value: "Generated when sent", source: "Random", secret: false };
     });
     return values;
   }, [store.defaults, collection, environment, runtime]);
@@ -455,7 +465,8 @@ function App() {
   };
 
   const startRequestDrag = (event: React.DragEvent, requestId: string, collectionId: string) => {
-    event.dataTransfer.setData("application/x-kodama-request", JSON.stringify({ requestId, collectionId }));
+    draggingRequest.current = { requestId, collectionId };
+    event.dataTransfer.setData("text/plain", `kodama-request:${requestId}:${collectionId}`);
     event.dataTransfer.effectAllowed = "move";
   };
 
@@ -470,7 +481,9 @@ function App() {
     event.stopPropagation();
     setDragOverId(null);
     try {
-      const source = JSON.parse(event.dataTransfer.getData("application/x-kodama-request")) as { requestId: string; collectionId: string };
+      const payload = event.dataTransfer.getData("text/plain");
+      const source = draggingRequest.current ?? (payload.startsWith("kodama-request:") ? (() => { const [, requestId, collectionId] = payload.split(":"); return { requestId, collectionId }; })() : null);
+      if (!source) return;
       editStore((next) => {
         const sourceCollection = next.collections.find((item) => item.id === source.collectionId);
         const targetCollection = next.collections.find((item) => item.id === targetCollectionId);
@@ -494,6 +507,8 @@ function App() {
       });
     } catch {
       // Ignore drops without a Kodama request payload.
+    } finally {
+      draggingRequest.current = null;
     }
   };
   const duplicateRequest = () => {
@@ -507,7 +522,7 @@ function App() {
     const item = copy(source);
     item.id = uid();
     item.name += " copy";
-    [...item.query, ...item.headers, ...item.body.fields].forEach((row) => {
+    [...item.query, ...(item.pathParams ?? []), ...item.headers, ...item.body.fields].forEach((row) => {
       row.id = uid();
     });
     editCollection(collectionId, (next) => next.requests.push(item));
@@ -619,6 +634,7 @@ function App() {
     setBusy(true);
     setError("");
     setResponse(null);
+    const startedAt = performance.now();
     try {
       const result = await invoke<RunResult>("send_request", {
         input: {
@@ -635,14 +651,22 @@ function App() {
       setHistory((previous) =>
         [{
           id: uid(),
+          requestId: request.id,
           name: request.name,
           method: request.method,
           status: result.status,
           time: result.elapsedMs,
+          url: result.url,
+          size: result.size,
+          date: new Date().toISOString(),
+          headerCount: result.headers.length,
+          response: !result.binary && result.body.length <= 64 * 1024 ? result : null,
         }, ...previous].slice(0, 40)
       );
     } catch (err) {
-      setError(message(err));
+      const failure = message(err);
+      setError(failure);
+      setHistory((previous) => [{ id: uid(), requestId: request.id, name: request.name, method: request.method, status: null, time: Math.round(performance.now() - startedAt), url: request.url, size: 0, date: new Date().toISOString(), headerCount: 0, response: null, error: failure }, ...previous].slice(0, 40));
     } finally {
       setBusy(false);
     }
@@ -670,6 +694,17 @@ function App() {
     } catch (err) {
       setError(message(err));
     }
+  }
+  async function importOpenApiFile() {
+    try {
+      const document = await invoke<unknown | null>("import_openapi_file");
+      if (!document) return;
+      const imported = importOpenApi(document);
+      setStore((previous) => ({ ...previous, collections: [...previous.collections, ...imported.collections] }));
+      const first = imported.collections[0].requests[0];
+      if (first) open(first.id);
+      toast.success(`Imported ${imported.collections[0].requests.length} requests from OpenAPI`);
+    } catch (err) { toast.error(`Could not import OpenAPI: ${message(err)}`); }
   }
   async function exportFile() {
     try {
@@ -705,6 +740,7 @@ function App() {
         <div className="top-actions">
           <span className="saved">{!ready ? "Workspace unavailable" : saved ? "Saved locally" : "Saving…"}</span>
           <button className="subtle" onClick={importFile}>Import</button>
+          <button className="subtle" onClick={importOpenApiFile}>Import OpenAPI</button>
           <button className="subtle" onClick={exportFile}>Export</button>
           <button className="subtle" onClick={() => setCurlDialog(true)}>Import cURL</button>
           <button
@@ -767,6 +803,7 @@ function App() {
                     onClick={() => open(value.id)}
                     onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
                     onDragStart={(event) => startRequestDrag(event, value.id, item.id)}
+                    onDragEnd={() => { draggingRequest.current = null; setDragOverId(null); }}
                     onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverId(`request:${value.id}`); }}
                     onDragLeave={() => setDragOverId(null)}
                     onDrop={(event) => {
@@ -962,13 +999,15 @@ function App() {
                 for runtime only.
               </p>
               <div className="scope-title">Runtime · this session</div>
+              <button className="text-button" onClick={() => setRuntime((previous) => { let index = 1; while (`VAR_${index}` in previous) index++; return { ...previous, [`VAR_${index}`]: "" }; })}>+ Add runtime variable</button>
               {Object.keys(runtime).length
                 ? Object.entries(runtime).map(([name, value]) => (
-                  <div className="inspector" key={name}>
-                    <code>_.{name}</code>
-                    <Tooltip><TooltipTrigger asChild><span tabIndex={0}>{/token|key|secret|password/i.test(name) ? "••••••" : value}</span></TooltipTrigger><TooltipContent>{value || "Empty value"}</TooltipContent></Tooltip>
+                  <div className="runtime-editor" key={name}>
+                    <span>_.</span><input aria-label="Runtime variable name" defaultValue={name} onBlur={(event) => { const nextName = event.target.value.trim().replace(/^_\./, ""); if (!nextName || nextName === name) { event.target.value = name; return; } if (nextName in runtime) { toast.error("Variable already exists"); event.target.value = name; return; } setRuntime((previous) => { const next = { ...previous }; delete next[name]; next[nextName] = value; return next; }); }} />
+                    <input aria-label={`Value for ${name}`} value={value} onChange={(event) => setRuntime((previous) => ({ ...previous, [name]: event.target.value }))} />
                     <button
                       className="icon"
+                      aria-label={`Remove ${name}`}
                       onClick={() =>
                         setRuntime((previous) => {
                           const next = { ...previous };
@@ -1023,16 +1062,21 @@ function App() {
               </div>
               {history.length
                 ? history.map((item) => (
-                  <div className="history-item" key={item.id}>
+                  <div className="history-record" key={item.id}><button className="history-item" onClick={() => setExpandedHistory((previous) => previous === item.id ? null : item.id)} aria-expanded={expandedHistory === item.id}>
                     <span className={`method ${item.method.toLowerCase()}`}>
                       {item.method}
                     </span>
                     <strong>{item.name}</strong>
-                    <span className={item.status < 400 ? "success" : "failure"}>
-                      {item.status}
+                    <span className={item.status !== null && item.status < 400 ? "success" : "failure"}>
+                      {item.status ?? "Error"}
                     </span>
                     <small>{item.time} ms</small>
-                  </div>
+                  </button>{expandedHistory === item.id && <div className="history-detail">
+                    <time>{new Date(item.date).toLocaleString()}</time>
+                    <code title={item.url}>{item.url}</code>
+                    {item.error ? <span className="failure">{item.error}</span> : <span>{(item.size / 1024).toFixed(1)} KB · {item.headerCount} response headers</span>}
+                    <div className="history-detail-actions"><button className="subtle small" disabled={!item.response || !findRequest(store, item.requestId)} title={item.response ? "Open saved response" : "Large and binary response bodies are not retained in history"} onClick={() => { if (item.response) { open(item.requestId); setResponse(item.response); } }}>Open response</button><button className="subtle small" onClick={() => { void navigator.clipboard.writeText(item.url).then(() => toast.success("URL copied")); }}>Copy URL</button></div>
+                  </div>}</div>
                 ))
                 : (
                   <p className="hint">
@@ -1199,6 +1243,8 @@ function App() {
                       onChange={(value) =>
                         editRequest((next) => {
                           next.url = value;
+                          const names = pathParamNames(value);
+                          next.pathParams = names.map((name) => next.pathParams?.find((row) => row.key === name) ?? { ...entry(), key: name });
                         })}
                     />
                     <button
@@ -1257,7 +1303,8 @@ function App() {
                   </nav>
                   <div className="editor">
                     {panel === "params" && (
-                      <Entries
+                      <div className="params-editor">{pathParamNames(request.url).length > 0 && <><div className="scope-title">Path parameters</div><p className="hint">Use <code>:id</code> in the URL, then set its value here.</p>{(request.pathParams ?? []).map((row) => <div className="path-param-row" key={row.id}><code>:{row.key}</code><VariableField label={`Path parameter ${row.key}`} variables={resolvedVariables} value={row.value} placeholder={`Value for ${row.key}`} onChange={(value) => editRequest((next) => { const target = next.pathParams.find((item) => item.id === row.id); if (target) target.value = value; })} /></div>)}</>}
+                      <div className="scope-title">Query parameters</div><Entries
                         name="Parameter"
                         variables={resolvedVariables}
                         rows={request.query}
@@ -1265,7 +1312,7 @@ function App() {
                           editRequest((next) => {
                             next.query = rows;
                           })}
-                      />
+                      /></div>
                     )}
                     {panel === "headers" && (
                       <Entries
@@ -1424,7 +1471,7 @@ function App() {
                           Use <code>_</code> for variables, <code>request</code>
                           {" "}
                           for the request{panel === "post"
-                            ? ", and response.status, response.text(), response.json()"
+                            ? ", and response.status, response.text(), response.json(), response.header(\"Header-Name\")"
                             : ""}. Writes commit only if the script succeeds.
                         </p>
                       </div>
@@ -1515,13 +1562,14 @@ function App() {
                                   ? "••••••"
                                   : value}
                               </span>
+                              <button className="subtle small" title={`Save ${key} as runtime variable`} onClick={() => setHeaderVariable({ name: key.replace(/[^A-Za-z0-9_]/g, "_").toUpperCase(), value })}>Save to _.</button>
                             </div>
                           ))}
                         </div>
                       )
                     : (
                       <div className="response-empty">
-                        <span>◇</span>
+                        <img src="/icon.svg" alt="" />
                         <strong>Ready when you are</strong>
                         <p>Send a request to inspect the response here.</p>
                       </div>
@@ -1531,7 +1579,7 @@ function App() {
             )
             : (
               <div className="welcome">
-                <span>◈</span>
+                <img src="/icon.svg" alt="" />
                 <h1>Your API workspace</h1>
                 <p>Choose a request or start a collection.</p>
                 <button
@@ -1629,6 +1677,14 @@ function App() {
           <DialogHeader><DialogTitle>Import cURL</DialogTitle><DialogDescription>Paste a cURL command to add a request to the current collection.</DialogDescription></DialogHeader>
           <textarea className="curl-input" aria-label="cURL command" placeholder="curl -X POST https://api.example.com" value={curlText} onChange={(event) => setCurlText(event.target.value)} />
           <DialogFooter><button className="subtle" onClick={() => setCurlDialog(false)}>Cancel</button><button className="send" onClick={() => { try { const item = importCurl(curlText); const id = collection?.id ?? store.collections[0]?.id; if (!id) throw new Error("Create a collection first"); editCollection(id, (next) => next.requests.push(item)); open(item.id); setCurlDialog(false); setCurlText(""); toast.success("Request imported"); } catch (err) { toast.error(message(err)); } }}>Import request</button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!headerVariable} onOpenChange={(open) => { if (!open) setHeaderVariable(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Save response header</DialogTitle><DialogDescription>Store this header value as a runtime variable for the current session.</DialogDescription></DialogHeader>
+          <label className="dialog-label" htmlFor="header-var-name">Variable name</label>
+          <input id="header-var-name" className="dialog-input" value={headerVariable?.name ?? ""} onChange={(event) => setHeaderVariable((previous) => previous && { ...previous, name: event.target.value })} />
+          <DialogFooter><button className="subtle" onClick={() => setHeaderVariable(null)}>Cancel</button><button className="send" onClick={() => { if (!headerVariable) return; const name = headerVariable.name.trim().replace(/^_\./, ""); if (!/^[A-Za-z_][\w]*$/.test(name)) { toast.error("Use letters, numbers, and underscores for variable names"); return; } setRuntime((previous) => ({ ...previous, [name]: headerVariable.value })); setHeaderVariable(null); toast.success(`Saved _.${name}`); }}>Save variable</button></DialogFooter>
         </DialogContent>
       </Dialog>
       <AlertDialog open={!!deleteDialog} onOpenChange={(open) => { if (!open) setDeleteDialog(null); }}>

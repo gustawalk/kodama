@@ -76,7 +76,13 @@ export function importCurl(command: string): ApiRequest {
 
 const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
 export function exportCurl(request: ApiRequest): string {
-  const parts = ["curl", "-X", request.method, quote(request.url)];
+  let url = request.url;
+  (request.pathParams ?? []).filter((row) => row.enabled && row.value).forEach((row) => {
+    url = url.replace(`/:${row.key}`, `/${encodeURIComponent(row.value)}`);
+  });
+  const query = request.query.filter((row) => row.enabled && row.key);
+  if (query.length) url += `${url.includes("?") ? "&" : "?"}${new URLSearchParams(query.map((row) => [row.key, row.value]))}`;
+  const parts = ["curl", "-X", request.method, quote(url)];
   request.headers.filter((item) => item.enabled && item.key).forEach((item) => parts.push("-H", quote(`${item.key}: ${item.value}`)));
   if (request.auth.kind === "basic") parts.push("-u", quote(`${request.auth.username}:${request.auth.password}`));
   if (request.auth.kind === "bearer") parts.push("-H", quote(`Authorization: Bearer ${request.auth.token}`));

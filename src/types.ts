@@ -24,6 +24,7 @@ export type ApiRequest = {
   url: string;
   folderId: string | null;
   query: Entry[];
+  pathParams: Entry[];
   headers: Entry[];
   auth: Auth;
   body: Body;
@@ -83,6 +84,7 @@ export const newRequest = (
   url: "",
   folderId,
   query: [],
+  pathParams: [],
   headers: [],
   auth: { kind: "none", username: "", password: "", token: "" },
   body: { kind: "json", text: "", fields: [] },

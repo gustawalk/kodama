@@ -57,7 +57,9 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
     ? Object.keys(variables).filter((name) => name.toLowerCase().includes(active.query)).sort().slice(0, 100)
     : [], [active?.query, variables]);
   const hasUnresolved = [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)]
-    .some((match) => !variables[match[1].trim()]);
+    .some((match) => !variables[match[1].trim()] && !match[1].trim().startsWith("$random."));
+  const showTokens = !multiline && !focused && /\{\{\s*[^{}]+?\s*\}\}/.test(value);
+  const tokens = showTokens ? value.split(/(\{\{\s*[^{}]+?\s*\}\})/g) : [];
   const choose = (name: string) => {
     if (!active) return;
     const suffix = value.slice(caret).startsWith("}}") ? 2 : 0;
@@ -76,7 +78,7 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
     "aria-label": label,
     value,
     placeholder,
-    className: [className, hasUnresolved && "unresolved-variable-field"].filter(Boolean).join(" "),
+    className: [className, hasUnresolved && "unresolved-variable-field", showTokens && "tokenized-input"].filter(Boolean).join(" "),
     "aria-invalid": hasUnresolved || undefined,
     spellCheck,
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -104,6 +106,14 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
   const hoveredValue = hoveredVariable ? variables[hoveredVariable.name] : undefined;
   return <div className="variable-field">
     {control}
+    {showTokens && <div className="variable-token-preview" onClick={() => field.current?.focus()} aria-hidden="true">
+      {tokens.map((part, index) => {
+        const match = /^\{\{\s*([^{}]+?)\s*\}\}$/.exec(part);
+        if (!match) return <span key={index}>{part}</span>;
+        const name = match[1].trim();
+        return <span key={index} className={`variable-chip${variables[name] ? "" : " missing"}`} onMouseMove={(event) => setHoveredVariable({ name, x: event.clientX, y: event.clientY })} onMouseLeave={() => setHoveredVariable(null)}>{name}</span>;
+      })}
+    </div>}
     {hoveredVariable && <div
       className={`variable-hover-tooltip${hoveredValue ? "" : " missing"}`}
       role="tooltip"

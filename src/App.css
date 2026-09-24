@@ -1070,3 +1070,27 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
   font-size: 16px;
   margin-left: 3px;
 }
+/* Variable tokens stay readable while the underlying input remains editable on focus. */
+.variable-field > input.tokenized-input { color: transparent !important; caret-color: var(--text); }
+.variable-token-preview { position: absolute; inset: 1px; display: flex; align-items: center; overflow: hidden; white-space: pre; padding: 0 10px; cursor: text; color: var(--text); font: inherit; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.variable-token-preview > span:not(.variable-chip) { white-space: pre; flex: none; }
+.variable-chip { display: inline-flex; align-items: center; max-width: 200px; overflow: hidden; text-overflow: ellipsis; flex: none; padding: 3px 6px; border-radius: 4px; color: #e9dcff; background: #674995; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1; cursor: help; }
+.variable-chip.missing { color: #fff0f0; background: #a33a4a; }
+.runtime-editor { display: grid; grid-template-columns: auto minmax(55px, 1fr) minmax(75px, 1.4fr) auto; align-items: center; gap: 5px; margin: 7px 0; }
+.runtime-editor > span { color: #b7a3ff; font-family: monospace; }
+.runtime-editor input { width: 100%; min-width: 0; padding: 7px; border-radius: 5px; font-family: monospace; font-size: 11px; }
+.history-item { width: 100%; text-align: left; }
+.history-item:hover { background: var(--hover); }
+.history-detail { display: flex; flex-direction: column; gap: 6px; padding: 8px 4px 12px 25px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.history-detail code { color: var(--text); overflow-wrap: anywhere; }
+.history-detail-actions { display: flex; gap: 6px; margin-top: 3px; }
+.path-param-row { display: flex; align-items: center; gap: 12px; margin: 8px 0 16px; }
+.path-param-row > code { flex: 0 0 28%; color: #b7a3ff; font-family: monospace; }
+.params-editor > .scope-title { margin: 0 0 10px; }
+.params-editor > .hint { margin: 0 0 10px; }
+.response-headers > div { grid-template-columns: minmax(100px, 170px) minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.response-headers > div > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.response-headers > div > button { flex: none; }
+.response-empty img { width: 25px; height: 25px; opacity: .6; }
+.welcome > img { width: 56px; height: 56px; }
+.dialog-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }

@@ -11,6 +11,87 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use uuid::Uuid;
+
+fn random_value(name: &str) -> Result<String, String> {
+    let id = Uuid::new_v4();
+    let bytes = id.as_bytes();
+    const FIRST: [&str; 8] = [
+        "Alex", "Sam", "Jordan", "Taylor", "Morgan", "Casey", "Robin", "Jamie",
+    ];
+    const LAST: [&str; 8] = [
+        "Lee", "Patel", "Silva", "Kim", "Garcia", "Brown", "Nguyen", "Costa",
+    ];
+    let first = FIRST[bytes[0] as usize % FIRST.len()];
+    let last = LAST[bytes[1] as usize % LAST.len()];
+    Ok(match name {
+        "uuid" => id.to_string(),
+        "firstName" => first.into(),
+        "lastName" => last.into(),
+        "fullName" => format!("{first} {last}"),
+        "email" => format!(
+            "{}.{}{}@example.test",
+            first.to_lowercase(),
+            last.to_lowercase(),
+            bytes[2]
+        ),
+        "username" => format!("{}{}", first.to_lowercase(), bytes[2]),
+        "integer" => u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]).to_string(),
+        "boolean" => (bytes[0] % 2 == 0).to_string(),
+        _ => return Err(format!("Unknown random generator: {name}")),
+    })
+}
+
+fn resolve_path_params(
+    url: &str,
+    entries: &[Entry],
+    variables: &HashMap<String, String>,
+    runtime: &HashMap<String, String>,
+) -> Result<String, String> {
+    let mut result = String::new();
+    let mut parts = url.splitn(2, "//");
+    let scheme = parts.next().unwrap_or("");
+    let rest = parts.next().ok_or("Invalid URL")?;
+    let path_start = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    result.push_str(scheme);
+    result.push_str("//");
+    result.push_str(&rest[..path_start]);
+    let suffix = &rest[path_start..];
+    let (path, tail) = suffix
+        .find(['?', '#'])
+        .map(|index| (&suffix[..index], &suffix[index..]))
+        .unwrap_or((suffix, ""));
+    for (index, segment) in path.split('/').enumerate() {
+        if index > 0 {
+            result.push('/');
+        }
+        if let Some(name) = segment.strip_prefix(':').filter(|name| {
+            !name.is_empty()
+                && name
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        }) {
+            let row = entries
+                .iter()
+                .find(|row| row.enabled && row.key == name)
+                .ok_or_else(|| format!("Missing path parameter: {name}"))?;
+            let value = interpolate(&row.value, variables, runtime)?;
+            if value.is_empty() {
+                return Err(format!("Path parameter {name} needs a value"));
+            }
+            let mut encoder = Url::parse("https://kodama.invalid/").map_err(|e| e.to_string())?;
+            encoder
+                .path_segments_mut()
+                .map_err(|_| "Could not encode path parameter")?
+                .push(&value);
+            result.push_str(encoder.path().trim_start_matches('/'));
+        } else {
+            result.push_str(segment);
+        }
+    }
+    result.push_str(tail);
+    Ok(result)
+}
 
 fn apply_scope(target: &mut HashMap<String, String>, variables: &[Variable]) {
     for item in variables {
@@ -32,12 +113,16 @@ fn interpolate(
         let after = &rest[start + 2..];
         let end = after.find("}}").ok_or("Unclosed variable reference")?;
         let key = after[..end].trim();
-        let value = if let Some(runtime_key) = key.strip_prefix("_.") {
-            runtime.get(runtime_key)
+        if let Some(generator) = key.strip_prefix("$random.") {
+            output.push_str(&random_value(generator)?);
         } else {
-            variables.get(key)
-        };
-        output.push_str(value.ok_or_else(|| format!("Unresolved variable: {{{{{key}}}}}"))?);
+            let value = if let Some(runtime_key) = key.strip_prefix("_.") {
+                runtime.get(runtime_key)
+            } else {
+                variables.get(key)
+            };
+            output.push_str(value.ok_or_else(|| format!("Unresolved variable: {{{{{key}}}}}"))?);
+        }
         rest = &after[end + 2..];
     }
     output.push_str(rest);
@@ -101,7 +186,12 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         variables = output.variables;
         request = output.request;
     }
-    let url_text = interpolate(&request.url, &variables, &runtime)?;
+    let url_text = resolve_path_params(
+        &interpolate(&request.url, &variables, &runtime)?,
+        &request.path_params,
+        &variables,
+        &runtime,
+    )?;
     let mut url = Url::parse(&url_text).map_err(|e| format!("Invalid URL: {e}"))?;
     if url.scheme() != "http" && url.scheme() != "https" {
         return Err("Only HTTP and HTTPS URLs are supported".into());
@@ -265,6 +355,34 @@ mod tests {
     }
 
     #[test]
+    fn path_parameters_are_encoded_and_random_templates_resolve() {
+        let row = Entry {
+            id: "id".into(),
+            key: "id".into(),
+            value: "a/b c".into(),
+            enabled: true,
+        };
+        let url = resolve_path_params(
+            "https://example.test/items/:id?expand=true",
+            &[row],
+            &HashMap::new(),
+            &HashMap::new(),
+        )
+        .unwrap();
+        assert_eq!(url, "https://example.test/items/a%2Fb%20c?expand=true");
+        assert!(resolve_path_params(
+            "https://example.test/items/:missing",
+            &[],
+            &HashMap::new(),
+            &HashMap::new()
+        )
+        .is_err());
+        let generated = interpolate("{{$random.uuid}}", &HashMap::new(), &HashMap::new()).unwrap();
+        assert!(Uuid::parse_str(&generated).is_ok());
+        assert!(interpolate("{{$random.unknown}}", &HashMap::new(), &HashMap::new()).is_err());
+    }
+
+    #[test]
     fn login_script_updates_token_used_by_next_http_request() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -298,6 +416,7 @@ mod tests {
             url: format!("http://127.0.0.1:{port}{path}"),
             folder_id: None,
             query: vec![],
+            path_params: vec![],
             headers: vec![],
             auth: Auth::default(),
             body: Body::default(),
@@ -371,6 +490,7 @@ mod tests {
                 url: format!("http://127.0.0.1:{port}/{path}"),
                 folder_id: None,
                 query: vec![],
+                path_params: vec![],
                 headers: vec![],
                 auth: Auth::default(),
                 body: Body::default(),

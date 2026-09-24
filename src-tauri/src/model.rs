@@ -65,6 +65,8 @@ pub struct ApiRequest {
     #[serde(default)]
     pub query: Vec<Entry>,
     #[serde(default)]
+    pub path_params: Vec<Entry>,
+    #[serde(default)]
     pub headers: Vec<Entry>,
     #[serde(default)]
     pub auth: Auth,
