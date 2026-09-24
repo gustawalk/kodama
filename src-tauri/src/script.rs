@@ -89,6 +89,7 @@ mod tests {
             post_script: String::new(),
             trusted: true,
             timeout_ms: None,
+            source_key: None,
         }
     }
 

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast, Toaster } from "sonner";
-import { Eye, EyeOff, GripVertical } from "lucide-react";
+import { Eye, EyeOff, GripVertical, Settings2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -10,6 +10,8 @@ import { VariableField, type ResolvedVariable } from "./VariableField";
 import { exportCurl, importCurl } from "./curl";
 import { importOpenApi } from "./openapi";
 import { previewRequestUrl } from "./requestPreview";
+import { parseOpenApiSource, type SourceFile } from "./sourceParser";
+import { syncCollectionSource, type SyncSummary } from "./sourceSync";
 import type {
   ApiRequest,
   Collection,
@@ -260,6 +262,13 @@ function App() {
   const [tabDropTarget, setTabDropTarget] = useState<{ id: string; after: boolean } | null>(null);
   const draggingRequest = useRef<{ requestId: string; collectionId: string } | null>(null);
   const [headerVariable, setHeaderVariable] = useState<{ name: string; value: string } | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [configCollectionId, setConfigCollectionId] = useState<string | null>(null);
+  const [replaceSourceId, setReplaceSourceId] = useState<string | null>(null);
+  const [sourceStatus, setSourceStatus] = useState<Record<string, { busy: boolean; message: string; error: boolean }>>({});
+  const sourceCollectionsRef = useRef<Collection[]>([]);
+  const syncingSourcesRef = useRef(new Set<string>());
+  const pollingSourcesRef = useRef(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -307,10 +316,38 @@ function App() {
     }, 400);
     return () => window.clearTimeout(timer);
   }, [store, ready]);
+  useEffect(() => { sourceCollectionsRef.current = store.collections; }, [store.collections]);
+  useEffect(() => {
+    if (!ready) return;
+    let stopped = false;
+    const checkSources = async () => {
+      if (pollingSourcesRef.current) return;
+      pollingSourcesRef.current = true;
+      try {
+        for (const item of sourceCollectionsRef.current) {
+          const source = item.source;
+          if (!source?.path || syncingSourcesRef.current.has(item.id)) continue;
+          try {
+            const stamp = await invoke<string>("source_file_stamp", { path: source.path });
+            if (stamp !== source.stamp && !stopped) {
+              const file = await invoke<SourceFile>("read_source_file", { path: source.path });
+              if (!stopped) await applySourceFile(item.id, file, "merge", false);
+            }
+          } catch (err) {
+            if (!stopped) setSourceStatus((previous) => ({ ...previous, [item.id]: { busy: false, message: message(err), error: true } }));
+          }
+        }
+      } finally { pollingSourcesRef.current = false; }
+    };
+    void checkSources();
+    const timer = window.setInterval(() => { void checkSources(); }, 5000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [ready]);
 
   const current = findRequest(store, selectedId);
   const request = current?.request;
   const collection = current?.collection;
+  const configCollection = store.collections.find((item) => item.id === configCollectionId);
   const environment = store.environments.find((item) =>
     item.id === store.activeEnvironmentId
   );
@@ -527,6 +564,7 @@ function App() {
     const item = copy(source);
     item.id = uid();
     item.name += " copy";
+    delete item.sourceKey;
     [...item.query, ...(item.pathParams ?? []), ...item.headers, ...item.body.fields].forEach((row) => {
       row.id = uid();
     });
@@ -641,6 +679,9 @@ function App() {
     setResponse(null);
     const startedAt = performance.now();
     try {
+      const sourceFields = [request.url, request.body.text, ...request.query.flatMap((row) => [row.key, row.value]), ...request.pathParams.map((row) => row.value), ...request.headers.flatMap((row) => [row.key, row.value])];
+      const unset = request.preScript.trim() ? [] : collection.source?.placeholders.filter((name) => sourceFields.some((field) => field.includes(`{{${name}}}`)) && !resolvedVariables[name]?.value) ?? [];
+      if (unset.length) throw new Error(`Set source variable${unset.length === 1 ? "" : "s"} ${unset.join(", ")} in Collection settings before sending`);
       const result = await invoke<RunResult>("send_request", {
         input: {
           request,
@@ -711,6 +752,59 @@ function App() {
       toast.success(`Imported ${imported.collections[0].requests.length} requests from OpenAPI`);
     } catch (err) { toast.error(`Could not import OpenAPI: ${message(err)}`); }
   }
+  async function applySourceFile(collectionId: string, file: SourceFile, mode: "merge" | "replace", announce: boolean) {
+    if (syncingSourcesRef.current.has(collectionId)) return;
+    syncingSourcesRef.current.add(collectionId);
+    setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: true, message: "Reading source…", error: false } }));
+    try {
+      const parsed = await parseOpenApiSource(file);
+      const imported = importOpenApi(parsed.document).collections[0];
+      const used = new Set(imported.requests.flatMap((item) => [item.url, item.body.text, ...item.query.flatMap((row) => [row.key, row.value]), ...item.pathParams.map((row) => row.value), ...item.headers.flatMap((row) => [row.key, row.value])]
+        .flatMap((text) => [...text.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)].map((match) => match[1]))));
+      const placeholders = parsed.placeholders.filter((name) => used.has(name));
+      for (const name of placeholders) {
+        if (!imported.variables.some((item) => item.name === name)) imported.variables.push({ ...variable(), name });
+      }
+      const current = sourceCollectionsRef.current.find((item) => item.id === collectionId);
+      if (!current) throw new Error("Collection no longer exists");
+      const details = { path: file.path, stamp: file.stamp, placeholders };
+      const preview = syncCollectionSource(current, imported, details, mode);
+      setStore((previous) => ({ ...previous, collections: previous.collections.map((item) =>
+        item.id === collectionId ? syncCollectionSource(item, imported, details, mode).collection : item,
+      ) }));
+      if (mode === "replace") {
+        const oldIds = new Set(current.requests.map((item) => item.id));
+        const wasSelected = !!selectedId && oldIds.has(selectedId);
+        const firstId = preview.collection.requests[0]?.id;
+        setTabs((previous) => { const remaining = previous.filter((id) => !oldIds.has(id)); return wasSelected && firstId ? [...remaining, firstId] : remaining; });
+        if (wasSelected) { setSelectedId(firstId ?? null); setResponse(null); }
+      }
+      const summary: SyncSummary = preview.summary;
+      const result = mode === "replace"
+        ? `Replaced with ${preview.collection.requests.length} source routes`
+        : `Synced: ${summary.added} added, ${summary.updated} updated, ${summary.preserved} locally edited`;
+      setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: false, message: result, error: false } }));
+      if (announce) toast.success(result);
+    } catch (err) {
+      const detail = message(err);
+      setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: false, message: detail, error: true } }));
+      if (announce) toast.error(`Could not sync source: ${detail}`);
+    } finally { syncingSourcesRef.current.delete(collectionId); }
+  }
+  async function chooseSourceFile(collectionId: string) {
+    try {
+      const file = await invoke<SourceFile | null>("pick_source_file");
+      if (file) await applySourceFile(collectionId, file, "merge", true);
+    } catch (err) { toast.error(`Could not open source file: ${message(err)}`); }
+  }
+  async function syncSourceNow(collectionId: string, mode: "merge" | "replace") {
+    const source = sourceCollectionsRef.current.find((item) => item.id === collectionId)?.source;
+    if (!source?.path) return;
+    try {
+      const file = await invoke<SourceFile>("read_source_file", { path: source.path });
+      await applySourceFile(collectionId, file, mode, true);
+    } catch (err) { toast.error(`Could not read source file: ${message(err)}`); }
+  }
   async function exportFile() {
     try {
       const exported = await invoke<boolean>("export_store", { store });
@@ -748,6 +842,7 @@ function App() {
           <button className="subtle" onClick={importOpenApiFile}>Import OpenAPI</button>
           <button className="subtle" onClick={exportFile}>Export</button>
           <button className="subtle" onClick={() => setCurlDialog(true)}>Import cURL</button>
+          <button className={`icon config-button${Object.values(sourceStatus).some((item) => item.error) ? " source-error" : ""}`} aria-label="Collection settings" title="Collection settings" onClick={() => { setConfigCollectionId(collection?.id ?? store.collections[0]?.id ?? null); setConfigOpen(true); }}><Settings2 size={17} /></button>
           <button
             className="icon theme"
             aria-label="Toggle theme"
@@ -1665,6 +1760,7 @@ function App() {
             <button role="menuitem" onClick={() => { setContextMenu(null); rename(target.name, (name) => editCollection(target.id, (next) => { next.name = name; })); }}>Rename</button>
             <button role="menuitem" onClick={() => { addRequest(target.id); setContextMenu(null); }}>New request</button>
             <button role="menuitem" onClick={() => { editCollection(target.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: null })); setContextMenu(null); }}>New folder</button>
+            <button role="menuitem" onClick={() => { setConfigCollectionId(target.id); setConfigOpen(true); setContextMenu(null); }}>Configure source…</button>
             <div className="context-menu-separator" />
             <button role="menuitem" className="danger" onClick={() => { deleteCollectionById(target.id); setContextMenu(null); }}>Delete collection</button>
           </>;
@@ -1702,6 +1798,48 @@ function App() {
           <DialogFooter><button className="subtle" onClick={() => setCurlDialog(false)}>Cancel</button><button className="send" onClick={() => { try { const item = importCurl(curlText); const id = collection?.id ?? store.collections[0]?.id; if (!id) throw new Error("Create a collection first"); editCollection(id, (next) => next.requests.push(item)); open(item.id); setCurlDialog(false); setCurlText(""); toast.success("Request imported"); } catch (err) { toast.error(message(err)); } }}>Import request</button></DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={configOpen} onOpenChange={setConfigOpen}>
+        <DialogContent className="source-config-dialog">
+          <DialogHeader><DialogTitle>Collection settings</DialogTitle><DialogDescription>Link an OpenAPI JSON, JavaScript, or TypeScript file. Kodama reads the exported document without running the file.</DialogDescription></DialogHeader>
+          {store.collections.length ? <>
+            <label className="dialog-label" htmlFor="source-collection">Collection</label>
+            <select id="source-collection" value={configCollectionId ?? ""} onChange={(event) => setConfigCollectionId(event.target.value)}>
+              {store.collections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            {configCollection && <>
+              <div className="source-config-section">
+                <div className="source-config-heading"><strong>OpenAPI source</strong><span>{configCollection.source ? "Checking for changes every 5 seconds" : "No file linked"}</span></div>
+                <code className="source-path">{configCollection.source?.path ?? "Choose a file to add and sync routes in this collection."}</code>
+                {configCollection.source?.lastSyncedAt && <small>Last synced {new Date(configCollection.source.lastSyncedAt).toLocaleString()}</small>}
+                {sourceStatus[configCollection.id] && <p className={`source-status${sourceStatus[configCollection.id].error ? " error" : ""}`}>{sourceStatus[configCollection.id].message}</p>}
+                <div className="source-actions">
+                  <button className="subtle" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => void chooseSourceFile(configCollection.id)}>{configCollection.source ? "Change file" : "Choose file"}</button>
+                  {configCollection.source && <>
+                    <button className="subtle" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => void syncSourceNow(configCollection.id, "merge")}>Sync now</button>
+                    <button className="subtle" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => { editCollection(configCollection.id, (next) => { delete next.source; }); setSourceStatus((previous) => { const next = { ...previous }; delete next[configCollection.id]; return next; }); }}>Unlink</button>
+                  </>}
+                </div>
+              </div>
+              {configCollection.source && <>
+                <div className="source-config-section">
+                  <div className="source-config-heading"><strong>Collection variables</strong><span>Values you set here survive normal sync</span></div>
+                  {configCollection.variables.length ? configCollection.variables.map((item) => <label className="source-variable" key={item.id}><code>{item.name}</code><input aria-label={`Value for ${item.name}`} value={item.value} placeholder={`Set ${item.name}`} onChange={(event) => editCollection(configCollection.id, (next) => { const variable = next.variables.find((value) => value.id === item.id); if (variable) variable.value = event.target.value; })} /></label>) : <p className="hint">This source has no collection variables.</p>}
+                </div>
+                <div className="source-config-section source-replace">
+                  <div><strong>Replace collection from source</strong><p>Removes local routes, folders, scripts, and collection variables, then imports the current file again.</p></div>
+                  <button className="subtle danger" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => { setConfigOpen(false); setReplaceSourceId(configCollection.id); }}>Replace collection</button>
+                </div>
+              </>}
+            </>}
+          </> : <p className="hint">Create a collection first, then link a source file.</p>}
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={!!replaceSourceId} onOpenChange={(open) => { if (!open) setReplaceSourceId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Replace this collection?</AlertDialogTitle><AlertDialogDescription>All current requests, scripts, folders, and collection variables in {store.collections.find((item) => item.id === replaceSourceId)?.name ?? "this collection"} will be replaced from its source file. Other collections and environments stay intact.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel onClick={() => setConfigOpen(true)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { const id = replaceSourceId; setReplaceSourceId(null); setConfigOpen(true); if (id) void syncSourceNow(id, "replace"); }}>Replace collection</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog open={!!headerVariable} onOpenChange={(open) => { if (!open) setHeaderVariable(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Save response header</DialogTitle><DialogDescription>Store this header value as a runtime variable for the current session.</DialogDescription></DialogHeader>

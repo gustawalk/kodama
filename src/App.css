@@ -1111,3 +1111,24 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
 .response-empty img { width: 25px; height: 25px; margin-bottom: 12px; opacity: .6; }
 .welcome > img { width: 56px; height: 56px; }
 .dialog-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.source-config-dialog[data-slot="dialog-content"] { --panel2: #1b212a; --line: #2b333e; --input: #171d25; --code: #dce7ed; --muted: #8995a4; --accent: #9ce3bb; width: min(680px, calc(100vw - 32px)); max-width: none; max-height: min(85vh, 760px); overflow-y: auto; gap: 10px; }
+html:not(.dark) .source-config-dialog[data-slot="dialog-content"] { --panel2: #f9fbfa; --line: #dbe3e2; --input: #fff; --code: #283c35; --muted: #70817b; --accent: #277e61; }
+.source-config-dialog > select { width: 100%; height: 36px; padding: 0 9px; border-radius: 6px; }
+.source-config-section { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel2); }
+.source-config-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.source-config-heading strong, .source-replace strong { font-size: 12px; }
+.source-config-heading span, .source-config-section small { color: var(--muted); font-size: 10px; }
+.source-path { display: block; padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--input); color: var(--code); font-size: 11px; overflow-wrap: anywhere; }
+.source-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.source-actions button:disabled, .source-replace button:disabled { opacity: .5; cursor: wait; }
+.source-status { margin: 0; color: var(--accent); font-size: 11px; overflow-wrap: anywhere; }
+.source-status.error { color: #ef9c9c; }
+.source-variable { display: grid; grid-template-columns: minmax(100px, 170px) minmax(0, 1fr); align-items: center; gap: 10px; }
+.source-variable code { font-size: 11px; color: #b7a3ff; }
+.source-variable input { width: 100%; min-width: 0; height: 34px; padding: 0 9px; border-radius: 6px; }
+.source-replace { flex-direction: row; align-items: center; justify-content: space-between; }
+.source-replace p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.source-replace button { flex: none; }
+@media (max-width: 600px) { .source-config-heading, .source-replace { align-items: flex-start; flex-direction: column; } .source-variable { grid-template-columns: 1fr; gap: 4px; } }
+.config-button { position: relative; }
+.config-button.source-error::after { content: ""; position: absolute; top: 2px; right: 1px; width: 6px; height: 6px; border-radius: 50%; background: #ef7777; }

@@ -32,14 +32,23 @@ export type ApiRequest = {
   postScript: string;
   trusted: boolean;
   timeoutMs: number | null;
+  sourceKey?: string;
 };
 export type Folder = { id: string; name: string; parentId: string | null };
+export type CollectionSource = {
+  path: string;
+  stamp: string;
+  lastSyncedAt: string;
+  placeholders: string[];
+  baseline: Record<string, ApiRequest>;
+};
 export type Collection = {
   id: string;
   name: string;
   variables: Variable[];
   folders: Folder[];
   requests: ApiRequest[];
+  source?: CollectionSource;
 };
 export type Environment = { id: string; name: string; variables: Variable[] };
 export type Store = {

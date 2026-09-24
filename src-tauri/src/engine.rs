@@ -424,6 +424,7 @@ mod tests {
             post_script: String::new(),
             trusted: true,
             timeout_ms: Some(3000),
+            source_key: None,
         };
         let mut login = make("Login", "POST", "/login");
         login.post_script = "_.TOKEN = response.json().token;".into();
@@ -498,6 +499,7 @@ mod tests {
                 post_script: String::new(),
                 trusted: true,
                 timeout_ms: Some(3000),
+                source_key: None,
             };
             tauri::async_runtime::block_on(execute_with_jar(
                 RunInput {

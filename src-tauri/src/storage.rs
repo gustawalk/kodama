@@ -1,4 +1,5 @@
 use crate::model::{Store, FORMAT_VERSION};
+use serde::Serialize;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
@@ -7,6 +8,7 @@ use std::{
     fs::OpenOptions,
     io::Write,
     path::{Path, PathBuf},
+    time::UNIX_EPOCH,
 };
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
@@ -76,6 +78,7 @@ fn scrub_secrets(store: &mut Store) {
         }
     }
     for collection in &mut store.collections {
+        collection.source = None;
         for variable in &mut collection.variables {
             if variable.secret {
                 variable.value.clear();
@@ -142,6 +145,70 @@ fn write_local_store(path: &Path, store: &Store) -> Result<(), String> {
     file.sync_all().map_err(|e| e.to_string())?;
     fs::rename(&temp, &path).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceFile {
+    path: String,
+    stamp: String,
+    contents: String,
+}
+
+fn source_stamp(path: &Path) -> Result<String, String> {
+    let metadata = fs::metadata(path).map_err(|e| format!("Could not read source file: {e}"))?;
+    if !metadata.is_file() {
+        return Err("OpenAPI source must be a file".into());
+    }
+    if metadata.len() > 20 * 1024 * 1024 {
+        return Err("OpenAPI source exceeds 20 MiB".into());
+    }
+    let modified = metadata
+        .modified()
+        .map_err(|e| e.to_string())?
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    Ok(format!("{}:{modified}", metadata.len()))
+}
+
+#[tauri::command]
+pub fn source_file_stamp(path: String) -> Result<String, String> {
+    source_stamp(Path::new(&path))
+}
+
+#[tauri::command]
+pub fn read_source_file(path: String) -> Result<SourceFile, String> {
+    let path = Path::new(&path);
+    let stamp = source_stamp(path)?;
+    let contents =
+        fs::read_to_string(path).map_err(|e| format!("Could not read source file: {e}"))?;
+    Ok(SourceFile {
+        path: path.to_string_lossy().into_owned(),
+        stamp,
+        contents,
+    })
+}
+
+#[tauri::command]
+pub async fn pick_source_file(app: AppHandle) -> Result<Option<SourceFile>, String> {
+    let (sender, receiver) = oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("OpenAPI source", &["json", "ts", "tsx", "js", "mjs", "cjs"])
+        .pick_file(move |path| {
+            let _ = sender.send(path);
+        });
+    let Some(path) = receiver.await.map_err(|_| "Open dialog failed")? else {
+        return Ok(None);
+    };
+    read_source_file(
+        path.as_path()
+            .ok_or("Choose a local source file")?
+            .to_string_lossy()
+            .into_owned(),
+    )
+    .map(Some)
 }
 
 #[tauri::command]
@@ -227,6 +294,19 @@ mod tests {
     use crate::model::{Collection, Environment, Variable};
 
     #[test]
+    fn reads_linked_source_file_and_reports_its_stamp() {
+        let path = std::env::temp_dir().join(format!("kodama-source-{}.ts", Uuid::new_v4()));
+        fs::write(&path, "export const openApiDocument = {};").unwrap();
+        let file = read_source_file(path.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(file.contents, "export const openApiDocument = {};");
+        assert_eq!(
+            file.stamp,
+            source_file_stamp(path.to_string_lossy().into_owned()).unwrap()
+        );
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn local_save_retains_secret_values_across_reload() {
         let path =
             std::env::temp_dir().join(format!("kodama-storage-test-{}.json", Uuid::new_v4()));
@@ -259,6 +339,7 @@ mod tests {
                 variables: vec![],
                 folders: vec![],
                 requests: vec![],
+                source: Some(serde_json::json!({"path": "/private/project/openapi.ts"})),
             }],
             environments: vec![Environment {
                 id: Uuid::new_v4().to_string(),
@@ -277,6 +358,7 @@ mod tests {
         let imported: Store = serde_json::from_slice(&serde_json::to_vec(&store).unwrap()).unwrap();
         assert_eq!(imported.collections[0].name, "API");
         assert_eq!(imported.environments[0].variables[0].value, "");
+        assert!(imported.collections[0].source.is_none());
     }
 
     #[test]
@@ -302,6 +384,7 @@ mod tests {
             post_script: "_.TOKEN = response.json().token;".into(),
             trusted: true,
             timeout_ms: None,
+            source_key: None,
         };
         request.headers.push(crate::model::Entry {
             id: Uuid::new_v4().to_string(),
@@ -315,6 +398,7 @@ mod tests {
             variables: vec![],
             folders: vec![],
             requests: vec![request],
+            source: None,
         });
         scrub_secrets(&mut store);
         let bytes = serde_json::to_vec(&store).unwrap();

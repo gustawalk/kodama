@@ -48,9 +48,15 @@ export function importOpenApi(document: unknown): Store {
       const operation = object(operationValue);
       const route = newRequest(string(operation.summary) || string(operation.operationId) || `${verb.toUpperCase()} ${path}`);
       route.method = verb.toUpperCase();
+      route.sourceKey = `${route.method} ${path}`;
       const localServer = string(object(list(operation.servers)[0]).url) || string(object(list(pathItem.servers)[0]).url);
       const pathText = path.replace(/\{([^{}]+)\}/g, ":$1");
       const server = (localServer || base).replace(/\/$/, "");
+      for (const match of server.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)) {
+        if (!collection.variables.some((variable) => variable.name === match[1])) {
+          collection.variables.push({ id: uid(), name: match[1], value: "", secret: false });
+        }
+      }
       if (!/^https?:\/\//i.test(server) && !collection.variables.some((variable) => variable.name === "BASE_URL")) {
         collection.variables.push({ id: uid(), name: "BASE_URL", value: "", secret: false });
       }

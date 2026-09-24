@@ -99,6 +99,9 @@ pub fn run() {
             storage::save_store,
             storage::import_store,
             storage::import_openapi_file,
+            storage::pick_source_file,
+            storage::read_source_file,
+            storage::source_file_stamp,
             storage::export_store,
         ])
         .run(tauri::generate_context!())

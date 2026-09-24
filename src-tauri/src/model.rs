@@ -80,6 +80,8 @@ pub struct ApiRequest {
     pub trusted: bool,
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_key: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -102,6 +104,8 @@ pub struct Collection {
     pub folders: Vec<Folder>,
     #[serde(default)]
     pub requests: Vec<ApiRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
