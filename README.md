@@ -59,6 +59,11 @@ bun run tauri build
 - Import common cURL commands and copy a saved request as cURL. Import OpenAPI
   3 or Swagger 2 JSON to create requests with paths, parameters, headers, and
   example request bodies.
+- Link a collection to an OpenAPI JSON, JavaScript, or TypeScript source file in
+  **Collection settings**. Kodama checks the file every five seconds while open.
+  Normal sync adds routes and updates untouched imported fields while keeping
+  local edits. **Replace collection** restores the whole collection from the
+  current source file after confirmation.
 - A session cookie jar carries cookies between requests and can be cleared from
   the response Cookies tab.
 - Local autosave and light/dark themes. Press Ctrl/Cmd+Enter to send and
@@ -130,6 +135,14 @@ Kodama stores the workspace in Tauri's per-user app-data directory as
 `kodama.json`. Writes use a temporary file and rename. Import validates the
 format version and UUIDs. Merge keeps current data when UUIDs collide; Replace
 uses the imported workspace. Imported scripts never execute during import.
+
+Source-linked collections store the selected file path locally. Exported
+workspaces omit source links and paths; link the source again after importing
+on another computer. JavaScript and TypeScript files are parsed as data without
+executing their imports or helper functions. A static exported OpenAPI object
+is supported; dynamic references such as `env.PORT` become editable collection
+variables (for example, `{{PORT}}`). Functions that build the document at
+runtime are not evaluated.
 
 ## Current limits
 

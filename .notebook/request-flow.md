@@ -6,4 +6,5 @@
 - `src/requestPreview.ts:previewRequestUrl()` mirrors current variable, path parameter, and query values for the editor's read-only preview. It does not run pre-request scripts or generate random values.
 - `src-tauri/src/script.rs:run_script()` builds the restricted response object. Header values arrive as key/value pairs and `response.header(name)` performs case insensitive lookup.
 - `src/openapi.ts:importOpenApi()` converts OpenAPI 3 and Swagger 2 JSON to a Kodama collection. `src-tauri/src/storage.rs:import_openapi_file()` only picks and reads the file.
+- `src/sourceParser.ts:parseOpenApiSource()` reads static TS/JS exports without executing imports. `src/sourceSync.ts:syncCollectionSource()` uses the last imported baseline to keep local request edits during file sync; `src-tauri/src/storage.rs` stores local source paths but removes them from workspace exports.
 - `src/App.tsx:startRequestDrag()` keeps the source request in a ref and also writes a text payload; `moveRequestTo()` reads the ref first. This avoids depending on custom drag MIME data in WebView2.
