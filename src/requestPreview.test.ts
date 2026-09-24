@@ -32,4 +32,12 @@ describe("request URL preview", () => {
     expect(previewRequestUrl(request, { PORT: { value: "", source: "Collection", secret: false } }))
       .toBe("http://localhost:{{PORT}}/v1/health");
   });
+
+  test("keeps random generators visible until send", () => {
+    const request = newRequest();
+    request.url = "https://api.example.test/items/:id";
+    request.pathParams = [{ ...entry(), key: "id", value: "{{random.uuid}}" }];
+    expect(previewRequestUrl(request, { "$random.uuid": { value: "Generated when sent", source: "Random", secret: false } }))
+      .toBe("https://api.example.test/items/{{random.uuid}}");
+  });
 });

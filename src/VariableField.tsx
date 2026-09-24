@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type React from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { variableHasValue, type ResolvedVariable } from "./variableResolution";
+import { activeVariableReference, getResolvedVariable, variableHasValue, variableSuggestions, type ResolvedVariable } from "./variableResolution";
 
 export type { ResolvedVariable } from "./variableResolution";
 type Props = {
@@ -14,15 +14,6 @@ type Props = {
   multiline?: boolean;
   spellCheck?: boolean;
 };
-
-function activeReference(value: string, caret: number) {
-  const before = value.slice(0, caret);
-  const start = before.lastIndexOf("{{");
-  if (start < 0 || before.slice(start).includes("}}")) return null;
-  const query = before.slice(start + 2);
-  if (query.includes("{") || query.includes("}")) return null;
-  return { start, query: query.trim().toLowerCase() };
-}
 
 function referenceAtPointer(field: HTMLInputElement | HTMLTextAreaElement, value: string, clientX: number) {
   const style = window.getComputedStyle(field);
@@ -53,17 +44,15 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
   const [focused, setFocused] = useState(false);
   const [selected, setSelected] = useState(0);
   const [hoveredVariable, setHoveredVariable] = useState<{ name: string; x: number; y: number } | null>(null);
-  const active = focused ? activeReference(value, caret) : null;
-  const matches = useMemo(() => active
-    ? Object.keys(variables).filter((name) => name.toLowerCase().includes(active.query)).sort().slice(0, 100)
-    : [], [active?.query, variables]);
+  const active = focused ? activeVariableReference(value, caret) : null;
+  const matches = useMemo(() => variableSuggestions(active, variables), [active?.query, active?.singleBrace, variables]);
   const hasUnresolved = [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)]
     .some((match) => !variableHasValue(match[1].trim(), variables));
   const showTokens = !multiline && !focused && /\{\{\s*[^{}]+?\s*\}\}/.test(value);
   const tokens = showTokens ? value.split(/(\{\{\s*[^{}]+?\s*\}\})/g) : [];
   const choose = (name: string) => {
     if (!active) return;
-    const suffix = value.slice(caret).startsWith("}}") ? 2 : 0;
+    const suffix = value.slice(caret).startsWith("}}") ? 2 : active.singleBrace && value.slice(caret).startsWith("}") ? 1 : 0;
     const replacement = `{{${name}}}`;
     onChange(value.slice(0, active.start) + replacement + value.slice(caret + suffix));
     const position = active.start + replacement.length;
@@ -104,7 +93,7 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
     },
   };
   const control = multiline ? <textarea {...common} /> : <input {...common} />;
-  const hoveredValue = hoveredVariable ? variables[hoveredVariable.name] : undefined;
+  const hoveredValue = hoveredVariable ? getResolvedVariable(hoveredVariable.name, variables) : undefined;
   const hoveredUnset = !!hoveredVariable && !variableHasValue(hoveredVariable.name, variables);
   return <div className="variable-field">
     {control}
@@ -130,8 +119,8 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
       {matches.map((name, index) => <Tooltip key={name}>
         <TooltipTrigger asChild><button type="button" role="option" aria-selected={selected === index}
           className={[selected === index && "selected", !variableHasValue(name, variables) && "missing"].filter(Boolean).join(" ")} onMouseDown={(event) => event.preventDefault()}
-          onClick={() => choose(name)}><code>{`{{${name}}}`}</code><span>{variables[name].source}</span></button></TooltipTrigger>
-        <TooltipContent>{variables[name].value || "Empty value"}</TooltipContent>
+          onClick={() => choose(name)}><code>{`{{${name}}}`}</code><span>{getResolvedVariable(name, variables)?.source}</span></button></TooltipTrigger>
+        <TooltipContent>{getResolvedVariable(name, variables)?.value || "Empty value"}</TooltipContent>
       </Tooltip>)}
     </div>}
   </div>;

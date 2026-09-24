@@ -100,6 +100,8 @@ use `{{$random.uuid}}`, `{{$random.firstName}}`, `{{$random.lastName}}`,
 `{{$random.fullName}}`, `{{$random.email}}`, `{{$random.username}}`,
 `{{$random.integer}}`, or `{{$random.boolean}}` in request fields. Values are
 generated for each send and can be combined with ordinary variables.
+The shorter form `{{random.uuid}}` also works. Type `{rand` in a request field
+to see the generators in autocomplete.
 
 The request flow is: choose scopes, run pre-request script, interpolate all
 fields, validate, send, run post-response script, then commit staged runtime

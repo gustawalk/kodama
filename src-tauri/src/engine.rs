@@ -113,7 +113,10 @@ fn interpolate(
         let after = &rest[start + 2..];
         let end = after.find("}}").ok_or("Unclosed variable reference")?;
         let key = after[..end].trim();
-        if let Some(generator) = key.strip_prefix("$random.") {
+        if let Some(generator) = key
+            .strip_prefix("$random.")
+            .or_else(|| key.strip_prefix("random."))
+        {
             output.push_str(&random_value(generator)?);
         } else {
             let value = if let Some(runtime_key) = key.strip_prefix("_.") {
@@ -379,7 +382,11 @@ mod tests {
         .is_err());
         let generated = interpolate("{{$random.uuid}}", &HashMap::new(), &HashMap::new()).unwrap();
         assert!(Uuid::parse_str(&generated).is_ok());
+        let generated_alias =
+            interpolate("{{random.uuid}}", &HashMap::new(), &HashMap::new()).unwrap();
+        assert!(Uuid::parse_str(&generated_alias).is_ok());
         assert!(interpolate("{{$random.unknown}}", &HashMap::new(), &HashMap::new()).is_err());
+        assert!(interpolate("{{random.unknown}}", &HashMap::new(), &HashMap::new()).is_err());
     }
 
     #[test]
