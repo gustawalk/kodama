@@ -660,6 +660,10 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
 .entry-row {
   margin-bottom: 7px;
 }
+.entry-row.inactive .variable-field { opacity: .48; filter: grayscale(1); }
+.entry-row.inactive .variable-field:focus-within { opacity: .85; filter: none; }
+.entry-row.inactive .variable-field > input { background: color-mix(in srgb, var(--panel) 72%, var(--line)); border-style: dashed; }
+.entry-row.inactive > .icon { opacity: .55; }
 .entry-row input:not([type=checkbox]),
 .variable-row input:not([type=checkbox]) {
   width: 100%;

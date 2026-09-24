@@ -117,9 +117,10 @@ function Entries(
         <span></span>
       </div>
       {rows.map((row) => (
-        <div className="entry-row" key={row.id}>
+        <div className={`entry-row${row.enabled ? "" : " inactive"}`} key={row.id}>
           <input
             aria-label="Enabled"
+            title={row.enabled ? "Included in request" : "Excluded from request"}
             type="checkbox"
             checked={row.enabled}
             onChange={(event) => edit(row.id, "enabled", event.target.checked)}
