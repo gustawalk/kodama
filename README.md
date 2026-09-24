@@ -131,10 +131,15 @@ Variable references in those fields are preserved. Other request text and
 scripts can contain user-entered sensitive content and are exported as written,
 so inspect a file before sharing it.
 
-Kodama stores the workspace in Tauri's per-user app-data directory as
-`kodama.json`. Writes use a temporary file and rename. Import validates the
-format version and UUIDs. Merge keeps current data when UUIDs collide; Replace
-uses the imported workspace. Imported scripts never execute during import.
+Kodama stores all local workspaces in Tauri's per-user app-data directory as
+`kodama.json`. Use the workspace name beside the logo to create, switch, rename,
+or delete project workspaces. Each workspace has its own collections, requests,
+environments, and variables. Switching clears session runtime variables,
+history, and cookies. Existing single-workspace files migrate automatically
+into the first workspace. Import and export apply to the selected workspace.
+Writes use a temporary file and rename. Import validates the format version
+and UUIDs. Merge keeps current data when UUIDs collide; Replace uses the
+imported workspace. Imported scripts never execute during import.
 
 Source-linked collections store the selected file path locally. Exported
 workspaces omit source links and paths; link the source again after importing
