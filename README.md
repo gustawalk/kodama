@@ -30,8 +30,8 @@ Protected route. The demo server listens only on `127.0.0.1:8787` and accepts
 
 The demo also has account creation, search, pagination, update, and deletion;
 token logout; JSON and header echo; cookie inspection; and selectable HTTP
-statuses. Import [demo-openapi.json](examples/demo-openapi.json) with **Import
-OpenAPI**, or link that file to a collection in Collection settings. The server
+statuses. Import [demo-openapi.json](examples/demo-openapi.json) with **Settings →
+Import OpenAPI (new collection)**, or link that file to a collection in Settings. The server
 also serves it at `http://127.0.0.1:8787/openapi.json`. The imported Login route
 includes a `x-kodama-post-response` script to save `_.TOKEN`; review and trust
 that script once, then run Login. Protected routes import with Bearer
@@ -44,6 +44,14 @@ For a production build on the current host:
 ```sh
 bun run tauri build
 ```
+
+## Download desktop builds
+
+Open **Actions → Build desktop application** in the GitHub repository and select
+**Run workflow**. The workflow also runs when a `v*` tag is pushed. After both
+jobs finish, download **kodama-windows** (NSIS `.exe`) or **kodama-appimage**
+(`.AppImage`) from the run's **Artifacts** section. These builds are unsigned and
+are not published as GitHub Releases.
 
 ## Features
 
@@ -71,7 +79,9 @@ bun run tauri build
   3 or Swagger 2 JSON to create requests with paths, parameters, headers, and
   example request bodies.
 - Link a collection to an OpenAPI JSON, JavaScript, or TypeScript source file in
-  **Collection settings**. Kodama checks the file every five seconds while open.
+  **Settings → Collection settings**. Kodama checks the file every ten seconds while open.
+  In a workspace without collections, **Link OpenAPI file** creates a collection
+  named from the document title and links it in one step.
   Normal sync adds routes and updates untouched imported fields while keeping
   local edits. **Replace collection** restores the whole collection from the
   current source file after confirmation.

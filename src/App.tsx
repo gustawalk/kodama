@@ -269,9 +269,11 @@ function App() {
   });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [collectionDropTarget, setCollectionDropTarget] = useState<{ id: string; position: "before" | "after" } | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [tabDropTarget, setTabDropTarget] = useState<{ id: string; after: boolean } | null>(null);
   const draggingRequest = useRef<{ requestId: string; collectionId: string } | null>(null);
+  const draggingCollection = useRef<string | null>(null);
   const [headerVariable, setHeaderVariable] = useState<{ name: string; value: string } | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
@@ -368,7 +370,7 @@ function App() {
       } finally { pollingSourcesRef.current = false; }
     };
     void checkSources();
-    const timer = window.setInterval(() => { void checkSources(); }, 5000);
+    const timer = window.setInterval(() => { void checkSources(); }, 10000);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [ready, workspaceData.activeWorkspaceId]);
 
@@ -581,6 +583,27 @@ function App() {
       draggingRequest.current = null;
     }
   };
+  const startCollectionDrag = (event: React.DragEvent, collectionId: string) => {
+    draggingCollection.current = collectionId;
+    event.dataTransfer.setData("text/plain", `kodama-collection:${collectionId}`);
+    event.dataTransfer.effectAllowed = "move";
+  };
+  const moveCollectionTo = (event: React.DragEvent, targetCollectionId: string, position: "before" | "after") => {
+    event.preventDefault();
+    event.stopPropagation();
+    const payload = event.dataTransfer.getData("text/plain");
+    const sourceId = draggingCollection.current ?? (payload.startsWith("kodama-collection:") ? payload.slice("kodama-collection:".length) : null);
+    setCollectionDropTarget(null);
+    if (!sourceId || sourceId === targetCollectionId) return;
+    editStore((next) => {
+      const sourceIndex = next.collections.findIndex((item) => item.id === sourceId);
+      if (sourceIndex < 0 || !next.collections.some((item) => item.id === targetCollectionId)) return;
+      const [moving] = next.collections.splice(sourceIndex, 1);
+      const insertAt = next.collections.findIndex((item) => item.id === targetCollectionId);
+      next.collections.splice(insertAt < 0 ? next.collections.length : insertAt + (position === "after" ? 1 : 0), 0, moving);
+    });
+    draggingCollection.current = null;
+  };
   const duplicateRequest = () => {
     if (!request || !collection) return;
     duplicateRequestById(request.id, collection.id);
@@ -764,7 +787,7 @@ function App() {
       const data = await invoke<Store | null>("import_store");
       if (data) setIncoming(data);
     } catch (err) {
-      setError(message(err));
+      toast.error(`Could not import workspace: ${message(err)}`);
     }
   }
   async function importOpenApiFile() {
@@ -778,24 +801,27 @@ function App() {
       toast.success(`Imported ${imported.collections[0].requests.length} requests from OpenAPI`);
     } catch (err) { toast.error(`Could not import OpenAPI: ${message(err)}`); }
   }
+  async function prepareSourceFile(file: SourceFile) {
+    const parsed = await parseOpenApiSource(file);
+    const imported = importOpenApi(parsed.document).collections[0];
+    const used = new Set(imported.requests.flatMap((item) => [item.url, item.body.text, ...item.query.flatMap((row) => [row.key, row.value]), ...item.pathParams.map((row) => row.value), ...item.headers.flatMap((row) => [row.key, row.value])]
+      .flatMap((text) => [...text.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)].map((match) => match[1]))));
+    const placeholders = parsed.placeholders.filter((name) => used.has(name));
+    for (const name of placeholders) {
+      if (!imported.variables.some((item) => item.name === name)) imported.variables.push({ ...variable(), name });
+    }
+    return { imported, details: { path: file.path, stamp: file.stamp, placeholders } };
+  }
   async function applySourceFile(collectionId: string, file: SourceFile, mode: "merge" | "replace", announce: boolean) {
     const targetWorkspaceId = workspaceData.activeWorkspaceId;
     if (syncingSourcesRef.current.has(collectionId)) return;
     syncingSourcesRef.current.add(collectionId);
     setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: true, message: "Reading source…", error: false } }));
     try {
-      const parsed = await parseOpenApiSource(file);
-      const imported = importOpenApi(parsed.document).collections[0];
-      const used = new Set(imported.requests.flatMap((item) => [item.url, item.body.text, ...item.query.flatMap((row) => [row.key, row.value]), ...item.pathParams.map((row) => row.value), ...item.headers.flatMap((row) => [row.key, row.value])]
-        .flatMap((text) => [...text.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)].map((match) => match[1]))));
-      const placeholders = parsed.placeholders.filter((name) => used.has(name));
-      for (const name of placeholders) {
-        if (!imported.variables.some((item) => item.name === name)) imported.variables.push({ ...variable(), name });
-      }
+      const { imported, details } = await prepareSourceFile(file);
       if (activeWorkspaceRef.current !== targetWorkspaceId) return;
       const current = sourceCollectionsRef.current.find((item) => item.id === collectionId);
       if (!current) throw new Error("Collection no longer exists");
-      const details = { path: file.path, stamp: file.stamp, placeholders };
       const preview = syncCollectionSource(current, imported, details, mode);
       setStore((previous) => ({ ...previous, collections: previous.collections.map((item) =>
         item.id === collectionId ? syncCollectionSource(item, imported, details, mode).collection : item,
@@ -818,6 +844,23 @@ function App() {
       setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: false, message: detail, error: true } }));
       if (announce) toast.error(`Could not sync source: ${detail}`);
     } finally { syncingSourcesRef.current.delete(collectionId); }
+  }
+  async function createCollectionFromSourceFile(file: SourceFile) {
+    const targetWorkspaceId = workspaceData.activeWorkspaceId;
+    const { imported, details } = await prepareSourceFile(file);
+    if (activeWorkspaceRef.current !== targetWorkspaceId) return;
+    const linked = syncCollectionSource(imported, imported, details, "merge").collection;
+    setStore((previous) => ({ ...previous, collections: [...previous.collections, linked] }));
+    setConfigCollectionId(linked.id);
+    if (linked.requests[0]) open(linked.requests[0].id);
+    toast.success(`Created ${linked.name} with ${linked.requests.length} source routes`);
+  }
+  async function createCollectionFromSourceFileDialog() {
+    try {
+      const file = await invoke<SourceFile | null>("pick_source_file");
+      if (!file) return;
+      await createCollectionFromSourceFile(file);
+    } catch (err) { toast.error(`Could not open source file: ${message(err)}`); }
   }
   async function chooseSourceFile(collectionId: string) {
     try {
@@ -923,18 +966,7 @@ function App() {
         </div>
         <div className="top-actions">
           <span className="saved">{!ready ? "Workspace unavailable" : saved ? "Saved locally" : "Saving…"}</span>
-          <button className="subtle" onClick={importFile}>Import</button>
-          <button className="subtle" onClick={importOpenApiFile}>Import OpenAPI</button>
-          <button className="subtle" onClick={exportFile}>Export</button>
-          <button className="subtle" onClick={() => setCurlDialog(true)}>Import cURL</button>
-          <button className={`icon config-button${Object.values(sourceStatus).some((item) => item.error) ? " source-error" : ""}`} aria-label="Collection settings" title="Collection settings" onClick={() => { setConfigCollectionId(collection?.id ?? store.collections[0]?.id ?? null); setConfigOpen(true); }}><Settings2 size={17} /></button>
-          <button
-            className="icon theme"
-            aria-label="Toggle theme"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            {theme === "dark" ? "☼" : "☾"}
-          </button>
+          <button className={`icon config-button${Object.values(sourceStatus).some((item) => item.error) ? " source-error" : ""}`} aria-label="Settings" title="Settings" onClick={() => { setConfigCollectionId(collection?.id ?? store.collections[0]?.id ?? null); setConfigOpen(true); }}><Settings2 size={17} /></button>
         </div>
       </header>
       <div className="workspace">
@@ -1032,10 +1064,12 @@ function App() {
                 };
                 const folderIds = new Set(item.folders.map((folder) => folder.id));
                 const rootFolders = item.folders.filter((folder) => !folder.parentId || !folderIds.has(folder.parentId));
-                return <div className="collection" key={item.id}>
+                const collectionDropPosition = collectionDropTarget?.id === item.id ? collectionDropTarget.position : null;
+                return <div className={`collection${collectionDropPosition ? ` collection-drop-${collectionDropPosition}` : ""}`} key={item.id}>
                   <div className="collection-heading">
                     <button
                       className={`collection-name${dragOverId === `root:${item.id}` ? " drop-target" : ""}`}
+                      draggable
                       onClick={() =>
                         setCollapsed((previous) =>
                           previous.includes(item.id)
@@ -1049,9 +1083,27 @@ function App() {
                           editCollection(item.id, (next) => {
                             next.name = name;
                           }))}
-                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverId(`root:${item.id}`); }}
-                      onDragLeave={() => setDragOverId(null)}
-                      onDrop={(event) => moveRequestTo(event, item.id, null)}
+                      onDragStart={(event) => startCollectionDrag(event, item.id)}
+                      onDragEnd={() => { draggingCollection.current = null; setCollectionDropTarget(null); setDragOverId(null); }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        const draggingCollectionId = draggingCollection.current;
+                        if (draggingCollectionId && draggingCollectionId !== item.id) {
+                          event.dataTransfer.dropEffect = "move";
+                          const bounds = event.currentTarget.getBoundingClientRect();
+                          setCollectionDropTarget({ id: item.id, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" });
+                        } else if (draggingCollectionId) {
+                          setCollectionDropTarget(null);
+                        } else {
+                          event.dataTransfer.dropEffect = "move";
+                          setDragOverId(`root:${item.id}`);
+                        }
+                      }}
+                      onDragLeave={() => { setCollectionDropTarget(null); setDragOverId(null); }}
+                      onDrop={(event) => {
+                        if (draggingCollection.current || event.dataTransfer.getData("text/plain").startsWith("kodama-collection:")) moveCollectionTo(event, item.id, collectionDropPosition ?? "before");
+                        else moveRequestTo(event, item.id, null);
+                      }}
                       onContextMenu={(event) => showCollectionMenu(event, item.id)}
                     >
                       {collapsed.includes(item.id) ? "▸" : "▾"} {item.name}
@@ -1901,20 +1953,42 @@ function App() {
       </Dialog>
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="source-config-dialog">
-          <DialogHeader><DialogTitle>Collection settings</DialogTitle><DialogDescription>Link an OpenAPI JSON, JavaScript, or TypeScript file. Kodama reads the exported document without running the file.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Settings</DialogTitle><DialogDescription>Choose how Kodama looks and manage this workspace and its collections.</DialogDescription></DialogHeader>
+          <div className="source-config-section">
+            <div className="source-config-heading"><strong>Appearance</strong></div>
+            <div className="settings-theme-options" role="group" aria-label="Theme">
+              <button className={theme === "light" ? "active" : ""} aria-pressed={theme === "light"} onClick={() => setTheme("light")}>Light</button>
+              <button className={theme === "dark" ? "active" : ""} aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>Dark</button>
+            </div>
+          </div>
+          <div className="source-config-section">
+            <div className="source-config-heading"><strong>Workspace data</strong><span>{activeWorkspace.name}</span></div>
+            <p className="settings-section-description">Import requests into this workspace or export it as a Kodama file.</p>
+            <div className="source-actions">
+              <button className="subtle" onClick={() => { setConfigOpen(false); void importFile(); }}>Import workspace</button>
+              <button className="subtle" onClick={() => { setConfigOpen(false); void importOpenApiFile(); }}>Import OpenAPI (new collection)</button>
+              <button className="subtle" onClick={() => { setConfigOpen(false); setCurlDialog(true); }}>Import cURL</button>
+              <button className="subtle" onClick={() => { setConfigOpen(false); void exportFile(); }}>Export workspace</button>
+            </div>
+          </div>
+          <div className="settings-collection-heading"><strong>Collection settings</strong><span>Link an OpenAPI JSON, JavaScript, or TypeScript file to keep routes synced.</span></div>
           {store.collections.length ? <>
             <label className="dialog-label" htmlFor="source-collection">Collection</label>
             <select id="source-collection" value={configCollectionId ?? ""} onChange={(event) => setConfigCollectionId(event.target.value)}>
               {store.collections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
+            <div className="source-actions source-collection-actions">
+              <button className="subtle" onClick={() => void createCollectionFromSourceFileDialog()}>Create collection from file</button>
+              <small>Creates a new linked collection using the OpenAPI title.</small>
+            </div>
             {configCollection && <>
               <div className="source-config-section">
-                <div className="source-config-heading"><strong>OpenAPI source</strong><span>{configCollection.source ? "Checking for changes every 5 seconds" : "No file linked"}</span></div>
+                <div className="source-config-heading"><strong>OpenAPI source</strong><span>{configCollection.source ? "Checking for changes every 10 seconds" : "No file linked"}</span></div>
                 <code className="source-path">{configCollection.source?.path ?? "Choose a file to add and sync routes in this collection."}</code>
                 {configCollection.source?.lastSyncedAt && <small>Last synced {new Date(configCollection.source.lastSyncedAt).toLocaleString()}</small>}
                 {sourceStatus[configCollection.id] && <p className={`source-status${sourceStatus[configCollection.id].error ? " error" : ""}`}>{sourceStatus[configCollection.id].message}</p>}
                 <div className="source-actions">
-                  <button className="subtle" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => void chooseSourceFile(configCollection.id)}>{configCollection.source ? "Change file" : "Choose file"}</button>
+                  <button className="subtle" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => void chooseSourceFile(configCollection.id)}>{configCollection.source ? "Change file" : "Link file to this collection"}</button>
                   {configCollection.source && <>
                     <button className="subtle" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => void syncSourceNow(configCollection.id, "merge")}>Sync now</button>
                     <button className="subtle" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => { editCollection(configCollection.id, (next) => { delete next.source; }); setSourceStatus((previous) => { const next = { ...previous }; delete next[configCollection.id]; return next; }); }}>Unlink</button>
@@ -1932,7 +2006,10 @@ function App() {
                 </div>
               </>}
             </>}
-          </> : <p className="hint">Create a collection first, then link a source file.</p>}
+          </> : <div className="source-config-section">
+            <p className="settings-section-description">Choose an OpenAPI JSON, JavaScript, or TypeScript file to create a collection using its document title. Kodama will keep its routes synced to the file.</p>
+            <div className="source-actions"><button className="subtle" onClick={() => void createCollectionFromSourceFileDialog()}>Create collection from file</button></div>
+          </div>}
         </DialogContent>
       </Dialog>
       <AlertDialog open={!!replaceSourceId} onOpenChange={(open) => { if (!open) setReplaceSourceId(null); }}>
