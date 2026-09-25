@@ -8,6 +8,10 @@ export function variableHasValue(name: string, variables: Record<string, Resolve
   return !!getResolvedVariable(name, variables)?.value.trim();
 }
 
+export function variableInspectorEntries(variables: Record<string, ResolvedVariable>): [string, ResolvedVariable][] {
+  return Object.entries(variables).filter(([name, item]) => !(item.source === "Runtime" && !name.startsWith("_.") && variables[`_.${name}`]?.source === "Runtime"));
+}
+
 export type ActiveVariableReference = { start: number; query: string; singleBrace: boolean };
 
 export function activeVariableReference(value: string, caret: number): ActiveVariableReference | null {
@@ -34,6 +38,7 @@ export function variableSuggestions(active: ActiveVariableReference | null, vari
       const label = active.query.startsWith("$") ? name : name.replace(/^\$/, "");
       return label.toLowerCase().includes(active.query) ? [label] : [];
     }
+    if (item.source === "Runtime" && name.startsWith("_.") && !active.query.startsWith("_")) return [];
     return !active.singleBrace && name.toLowerCase().includes(active.query) ? [name] : [];
   }))].sort().slice(0, 100);
 }

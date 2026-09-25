@@ -9,6 +9,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, hoverTooltip, keymap } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
 import type { ResolvedVariable } from "./VariableField";
+import { getResolvedVariable, variableSuggestions } from "./variableResolution";
 
 type Props = {
   value: string;
@@ -25,11 +26,11 @@ export function CodeEditor({ value, onChange, language, label, variables, theme 
       const match = context.matchBefore(/\{\{[^{}]*/);
       if (!match) return null;
       const filter = match.text.slice(2).trim().toLowerCase();
-      const names = Object.keys(variables).filter((name) => name.toLowerCase().includes(filter));
+      const names = variableSuggestions({ start: match.from, query: filter, singleBrace: false }, variables);
       return { from: match.from, options: names.map((name) => ({
         label: `{{${name}}}`,
-        detail: variables[name].source,
-        info: variables[name].value || "Empty value",
+        detail: getResolvedVariable(name, variables)?.source ?? "Random",
+        info: getResolvedVariable(name, variables)?.value || "Empty value",
         apply: (view: EditorView, _completion: unknown, from: number, to: number) => {
           const after = view.state.doc.sliceString(to, to + 2);
           view.dispatch({ changes: { from, to: to + (after === "}}" ? 2 : 0), insert: `{{${name}}}` }, selection: { anchor: from + name.length + 4 } });
@@ -42,7 +43,7 @@ export function CodeEditor({ value, onChange, language, label, variables, theme 
         const from = line.from + (match.index ?? 0);
         const to = from + match[0].length;
         if (pos >= from && pos <= to) {
-          const variable = variables[match[1].trim()];
+          const variable = getResolvedVariable(match[1].trim(), variables);
           return { pos: from, end: to, create: () => {
             const dom = document.createElement("div");
             dom.className = `code-variable-tooltip${variable ? "" : " missing"}`;

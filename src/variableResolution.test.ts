@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { activeVariableReference, variableHasValue, variableSuggestions } from "./variableResolution";
+import { activeVariableReference, variableHasValue, variableInspectorEntries, variableSuggestions } from "./variableResolution";
 
 describe("variable readiness", () => {
   test("treats undefined and empty values as unset", () => {
@@ -25,5 +25,13 @@ describe("variable readiness", () => {
     expect(variableSuggestions(activeVariableReference("{{$rand", 7), variables)).toEqual(["$random.uuid"]);
     expect(variableHasValue("random.uuid", variables)).toBe(true);
     expect(variableHasValue("$random.uuid", variables)).toBe(true);
+  });
+
+  test("shows one runtime suggestion until its scoped alias is requested", () => {
+    const runtime = { value: "abc", source: "Runtime", secret: true };
+    const variables = { TOKEN: runtime, "_.TOKEN": runtime };
+    expect(variableSuggestions(activeVariableReference("{{", 2), variables)).toEqual(["TOKEN"]);
+    expect(variableSuggestions(activeVariableReference("{{_.", 4), variables)).toEqual(["_.TOKEN"]);
+    expect(variableInspectorEntries(variables).map(([name]) => name)).toEqual(["_.TOKEN"]);
   });
 });
