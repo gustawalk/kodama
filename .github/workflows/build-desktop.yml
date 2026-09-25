@@ -20,6 +20,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: bun ci
       - run: bun run tauri build --bundles nsis --ci
+      - name: Check Windows application identity
+        shell: pwsh
+        run: |
+          $app = 'src-tauri/target/release/Kodama.exe'
+          if (!(Test-Path $app)) { throw 'Expected Kodama.exe was not built' }
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $app).Path)
+          if ($null -eq $icon) { throw 'Kodama.exe has no embedded icon' }
+          $installers = Get-ChildItem 'src-tauri/target/release/bundle/nsis' -Filter 'Kodama*.exe'
+          if ($installers.Count -eq 0) { throw 'Expected a Kodama NSIS installer' }
       - uses: actions/upload-artifact@v4
         with:
           name: kodama-windows
