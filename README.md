@@ -4,6 +4,12 @@ Kodama is a local-first desktop HTTP client for saving, organizing, and running
 REST requests. It uses a React web interface in a Tauri 2 desktop window. HTTP
 requests and JavaScript scripts run in Rust, outside the WebView.
 
+![Kodama request workspace](assets/screenshots/workspace.png)
+
+The response can sit below the editor or on the right, and both layouts are resizable.
+
+![Kodama with a right-docked response](assets/screenshots/response-right.png)
+
 ## Quick start
 
 Requirements: Bun, Rust, and the
@@ -15,14 +21,16 @@ bun install
 bun run tauri dev
 ```
 
-The starter workspace includes a **Kodama demo** collection. In another
-terminal, run:
+New installations start with an empty workspace. To try the optional example API,
+run this in another terminal:
 
 ```sh
 bun run demo:server
 ```
 
-In Kodama, run **Login** and then **Protected route**. Login's post-response
+Import [demo-openapi.json](examples/demo-openapi.json) from **Settings → Import OpenAPI (new collection)**
+or create a linked collection from that file. In Kodama, run **Login** and then
+**Protected route**. Login's post-response
 script saves the returned token to `_.TOKEN`; Protected route uses
 `Bearer {{_.TOKEN}}`. Run Login again to replace the token without editing
 Protected route. The demo server listens only on `127.0.0.1:8787` and accepts
@@ -30,8 +38,7 @@ Protected route. The demo server listens only on `127.0.0.1:8787` and accepts
 
 The demo also has account creation, search, pagination, update, and deletion;
 token logout; JSON and header echo; cookie inspection; and selectable HTTP
-statuses. Import [demo-openapi.json](examples/demo-openapi.json) with **Settings →
-Import OpenAPI (new collection)**, or link that file to a collection in Settings. The server
+statuses. The server
 also serves it at `http://127.0.0.1:8787/openapi.json`. The imported Login route
 includes a `x-kodama-post-response` script to save `_.TOKEN`; review and trust
 that script once, then run Login. Protected routes import with Bearer
@@ -55,12 +62,13 @@ are not published as GitHub Releases.
 
 ## Features
 
-- Collections, folders, saved requests, tabs, search, duplication, drag ordering,
+- Collections, folders, saved requests, tabs, search, duplication, pointer drag ordering with edge scrolling,
   and expandable session history with URL, timestamp, size, and response access.
 - HTTP methods, `:id` path parameters, URL and query parameters, enabled headers, Basic and Bearer
   auth, JSON/text bodies, URL-encoded forms, and text multipart fields.
 - Response status, headers, formatted JSON/text, timing, size, and binary
-  download. Search and copy response text, and inspect session cookies.
+  download. Dock the resizable response below or beside the editor, navigate search matches,
+  copy response text, and inspect session cookies.
 - Per-request timeout (30 seconds by default), up to ten redirects, and normal
   TLS certificate verification.
 - Pre-request and post-response JavaScript scripts with limited APIs and runtime
@@ -76,17 +84,20 @@ are not published as GitHub Releases.
 - Versioned Kodama JSON import/export with merge or replace. Imported scripts
   remain disabled until individually trusted.
 - Import common cURL commands and copy a saved request as cURL. Import OpenAPI
-  3 or Swagger 2 JSON to create requests with paths, parameters, headers, and
+  3 or Swagger 2 JSON/YAML to create requests with paths, parameters, headers, and
   example request bodies. In **Settings → Workspace data**, choose whether
   imported request names use operation summaries or route paths such as
-  `/accounts/:id`. The choice also applies to linked source syncs.
-- Link a collection to an OpenAPI JSON, JavaScript, or TypeScript source file in
+  `/accounts/:id`, and whether imported URLs retain the document protocol or use
+  HTTP/HTTPS. These choices also apply to linked source syncs.
+- Link a collection to an OpenAPI JSON, YAML, JavaScript, or TypeScript source file in
   **Settings → Collection settings**. Kodama checks the file every ten seconds while open.
   **Create collection from file** creates a collection named from the document
   title and links it in one step, including in an empty workspace.
   Normal sync adds routes and updates untouched imported fields while keeping
   local edits. **Replace collection** restores the whole collection from the
-  current source file after confirmation.
+  current source file after confirmation. Internal and relative local JSON/YAML
+  `$ref` files beneath the selected source directory are supported and checked
+  for changes with the source.
 - A session cookie jar carries cookies between requests and can be cleared from
   the response Cookies tab.
 - Local autosave, light/dark themes, and saved folder expansion per workspace.
