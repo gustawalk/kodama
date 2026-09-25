@@ -50,4 +50,14 @@ describe("OpenAPI import", () => {
     expect(store.collections[0].variables[0].name).toBe("BASE_URL");
     expect(store.collections[0].requests[0].url).toBe("{{BASE_URL}}/v2/ping");
   });
+  test("infers missing POST path parameters and can force HTTP", () => {
+    const store = importOpenApi({ openapi: "3.0.3", info: { title: "Local" }, servers: [{ url: "https://localhost:3000" }], paths: { "/items/{id}": { post: { responses: { 200: {} } } } } }, "path", "http");
+    expect(store.collections[0].requests[0].url).toBe("http://localhost:3000/items/:id");
+    expect(store.collections[0].requests[0].pathParams.map((row) => row.key)).toEqual(["id"]);
+  });
+  test("resolves internal referenced path items, parameters, and request bodies", () => {
+    const store = importOpenApi({ openapi: "3.0.3", info: { title: "Refs" }, paths: { "/items/{id}": { $ref: "#/components/pathItems/Item" } }, components: { pathItems: { Item: { post: { parameters: [{ $ref: "#/components/parameters/Id" }], requestBody: { $ref: "#/components/requestBodies/Item" } } } }, parameters: { Id: { name: "id", in: "path", example: "item-1" } }, requestBodies: { Item: { content: { "application/json": { schema: { type: "object", properties: { name: { type: "string", example: "Lamp" } } } } } } } } });
+    expect(store.collections[0].requests[0].pathParams[0].value).toBe("item-1");
+    expect(JSON.parse(store.collections[0].requests[0].body.text)).toEqual({ name: "Lamp" });
+  });
 });

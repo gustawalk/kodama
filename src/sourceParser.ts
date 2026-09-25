@@ -1,12 +1,13 @@
 export type SourceFile = { path: string; stamp: string; contents: string };
 export type ParsedSource = { document: unknown; placeholders: string[] };
+import { parseOpenApiText } from "./openapiRefs";
 
 type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => !!value && typeof value === "object" && !Array.isArray(value);
 
 export async function parseOpenApiSource(file: SourceFile): Promise<ParsedSource> {
-  if (/\.json$/i.test(file.path)) return { document: JSON.parse(file.contents), placeholders: [] };
-  if (!/\.(?:[cm]?js|tsx?)$/i.test(file.path)) throw new Error("Choose a JSON, JavaScript, or TypeScript OpenAPI source file");
+  if (/\.(?:json|ya?ml)$/i.test(file.path)) return { document: parseOpenApiText(file.path, file.contents), placeholders: [] };
+  if (!/\.(?:[cm]?js|tsx?)$/i.test(file.path)) throw new Error("Choose a JSON, YAML, JavaScript, or TypeScript OpenAPI source file");
 
   const ts = await import("typescript");
   const kind = /\.tsx$/i.test(file.path) ? ts.ScriptKind.TSX : /\.ts$/i.test(file.path) ? ts.ScriptKind.TS : ts.ScriptKind.JS;

@@ -7,11 +7,12 @@ const string = (value: unknown): string => typeof value === "string" ? value : "
 const methods = new Set(["get", "post", "put", "patch", "delete", "head", "options", "trace"]);
 
 export type OpenApiRequestNames = "summary" | "path";
+export type OpenApiScheme = "document" | "http" | "https";
 
-export function importOpenApi(document: unknown, requestNames: OpenApiRequestNames = "summary"): Store {
+export function importOpenApi(document: unknown, requestNames: OpenApiRequestNames = "summary", importScheme: OpenApiScheme = "document"): Store {
   const spec = object(document);
   if (!string(spec.openapi).startsWith("3.") && spec.swagger !== "2.0") {
-    throw new Error("Choose an OpenAPI 3 or Swagger 2 JSON document");
+    throw new Error("Choose an OpenAPI 3 or Swagger 2 document");
   }
   const paths = object(spec.paths);
   const rootServer = string(object(list(spec.servers)[0]).url);
@@ -22,11 +23,18 @@ export function importOpenApi(document: unknown, requestNames: OpenApiRequestNam
   const collection = newCollection(title);
   const byTag = new Map<string, string>();
   const ref = (value: unknown): Json => {
-    const candidate = object(value);
-    const pointer = string(candidate.$ref);
-    if (!pointer.startsWith("#/")) return candidate;
-    const resolved = pointer.slice(2).split("/").reduce<unknown>((node, key) => object(node)[key.replace(/~1/g, "/").replace(/~0/g, "~")], spec);
-    return object(resolved);
+    let candidate = object(value);
+    const seen = new Set<string>();
+    while (typeof candidate.$ref === "string") {
+      const pointer = candidate.$ref;
+      if (!pointer.startsWith("#/")) throw new Error(`Unsupported OpenAPI reference: ${pointer}`);
+      if (seen.has(pointer)) throw new Error(`Circular OpenAPI reference: ${pointer}`);
+      seen.add(pointer);
+      const resolved = pointer.slice(2).split("/").reduce<unknown>((node, key) => object(node)[key.replace(/~1/g, "/").replace(/~0/g, "~")], spec);
+      if (!resolved || typeof resolved !== "object" || Array.isArray(resolved)) throw new Error(`Missing OpenAPI reference: ${pointer}`);
+      candidate = object(resolved);
+    }
+    return candidate;
   };
   const sample = (schemaValue: unknown, depth = 0): unknown => {
     if (depth > 5) return null;
@@ -44,10 +52,10 @@ export function importOpenApi(document: unknown, requestNames: OpenApiRequestNam
   };
   let count = 0;
   for (const [path, pathValue] of Object.entries(paths)) {
-    const pathItem = object(pathValue);
+    const pathItem = ref(pathValue);
     for (const [verb, operationValue] of Object.entries(pathItem)) {
       if (!methods.has(verb)) continue;
-      const operation = object(operationValue);
+      const operation = ref(operationValue);
       const pathText = path.replace(/\{([^{}]+)\}/g, ":$1");
       const route = newRequest(requestNames === "path"
         ? pathText
@@ -66,7 +74,8 @@ export function importOpenApi(document: unknown, requestNames: OpenApiRequestNam
       const postScript = string(operation["x-kodama-post-response"]);
       if (postScript) { route.postScript = postScript; route.trusted = false; }
       const localServer = string(object(list(operation.servers)[0]).url) || string(object(list(pathItem.servers)[0]).url);
-      const server = (localServer || base).replace(/\/$/, "");
+      const rawServer = (localServer || base).replace(/\/$/, "");
+      const server = importScheme === "document" ? rawServer : rawServer.replace(/^https?:/i, `${importScheme}:`);
       for (const match of server.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)) {
         if (!collection.variables.some((variable) => variable.name === match[1])) {
           collection.variables.push({ id: uid(), name: match[1], value: "", secret: false });
@@ -101,6 +110,10 @@ export function importOpenApi(document: unknown, requestNames: OpenApiRequestNam
         if (key.startsWith("path:")) route.pathParams.push(row);
         else if (key.startsWith("query:")) route.query.push(row);
         else route.headers.push(row);
+      }
+      for (const match of path.matchAll(/\{([^{}]+)\}/g)) {
+        const name = match[1];
+        if (!route.pathParams.some((row) => row.key === name)) route.pathParams.push({ ...entry(), key: name });
       }
       const requestBody = ref(operation.requestBody);
       const content = object(requestBody.content);
