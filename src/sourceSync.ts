@@ -1,6 +1,6 @@
 import type { ApiRequest, Collection, CollectionSource, Entry } from "./types";
 
-type SourceDetails = Pick<CollectionSource, "path" | "stamp" | "placeholders">;
+type SourceDetails = Pick<CollectionSource, "path" | "stamp" | "placeholders" | "dependencies">;
 export type SyncSummary = { added: number; updated: number; preserved: number; retained: number };
 const clone = <T,>(value: T): T => structuredClone(value);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -124,6 +124,6 @@ export function syncCollectionSource(current: Collection, imported: Collection, 
     if (old && !same(withoutGeneratedIds(existing), withoutGeneratedIds(old))) summary.preserved++;
   }
   if (mode === "merge") summary.retained = Object.keys(oldBaseline).filter((key) => !seen.has(key)).length;
-  next.source = { path: details.path, stamp: details.stamp, placeholders: details.placeholders, lastSyncedAt: new Date().toISOString(), baseline };
+  next.source = { path: details.path, stamp: details.stamp, dependencies: details.dependencies, placeholders: details.placeholders, lastSyncedAt: new Date().toISOString(), baseline };
   return { collection: next, summary };
 }

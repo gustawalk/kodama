@@ -248,7 +248,7 @@ pub async fn pick_source_file(app: AppHandle) -> Result<Option<SourceFile>, Stri
     let (sender, receiver) = oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("OpenAPI source", &["json", "ts", "tsx", "js", "mjs", "cjs"])
+        .add_filter("OpenAPI source", &["json", "yaml", "yml", "ts", "tsx", "js", "mjs", "cjs"])
         .pick_file(move |path| {
             let _ = sender.send(path);
         });
@@ -295,25 +295,18 @@ pub async fn import_store(app: AppHandle) -> Result<Option<Store>, String> {
 }
 
 #[tauri::command]
-pub async fn import_openapi_file(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+pub async fn import_openapi_file(app: AppHandle) -> Result<Option<SourceFile>, String> {
     let (sender, receiver) = oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("OpenAPI JSON", &["json"])
+        .add_filter("OpenAPI document", &["json", "yaml", "yml"])
         .pick_file(move |path| {
             let _ = sender.send(path);
         });
     let Some(path) = receiver.await.map_err(|_| "Open dialog failed")? else {
         return Ok(None);
     };
-    let data =
-        fs::read(path.as_path().ok_or("Choose a local JSON file")?).map_err(|e| e.to_string())?;
-    if data.len() > 20 * 1024 * 1024 {
-        return Err("Import file exceeds 20 MiB".into());
-    }
-    serde_json::from_slice(&data)
-        .map(Some)
-        .map_err(|e| format!("OpenAPI file is invalid JSON: {e}"))
+    read_source_file(path.as_path().ok_or("Choose a local OpenAPI file")?.to_string_lossy().into_owned()).map(Some)
 }
 
 #[tauri::command]

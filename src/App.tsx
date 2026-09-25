@@ -2,14 +2,16 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast, Toaster } from "sonner";
-import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Pencil, Settings2, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Ellipsis, Eye, EyeOff, GripVertical, PanelBottom, PanelRight, Pencil, Settings2, Trash2 } from "lucide-react";
+import { Select as SelectPrimitive } from "radix-ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { VariableField, type ResolvedVariable } from "./VariableField";
-import { variableHasValue } from "./variableResolution";
+import { variableHasValue, variableInspectorEntries } from "./variableResolution";
 import { exportCurl, importCurl } from "./curl";
-import { importOpenApi, type OpenApiRequestNames } from "./openapi";
+import { importOpenApi, type OpenApiRequestNames, type OpenApiScheme } from "./openapi";
+import { bundleOpenApiRefs } from "./openapiRefs";
 import { previewRequestUrl } from "./requestPreview";
 import { parseOpenApiSource, type SourceFile } from "./sourceParser";
 import { syncCollectionSource, type SyncSummary } from "./sourceSync";
@@ -23,7 +25,7 @@ import type {
   WorkspaceData,
 } from "./types";
 import {
-  demoWorkspaceData,
+  freshWorkspaceData,
   emptyStore,
   entry,
   newCollection,
@@ -34,8 +36,13 @@ import {
 import "./App.css";
 
 type Panel = "params" | "headers" | "auth" | "body" | "pre" | "post";
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const CodeEditor = lazy(() => import("./CodeEditor").then((module) => ({ default: module.CodeEditor })));
 type Sidebar = "requests" | "environments" | "variables" | "history";
+type PointerDrag =
+  | { kind: "request"; requestId: string; collectionId: string }
+  | { kind: "collection"; collectionId: string }
+  | { kind: "tab"; requestId: string };
 type ContextMenuState =
   | { kind: "request"; x: number; y: number; requestId: string; collectionId: string }
   | { kind: "tab"; x: number; y: number; requestId: string }
@@ -223,7 +230,7 @@ function VariableEditor(
 }
 
 function App() {
-  const [workspaceData, setWorkspaceData] = useState<WorkspaceData>(demoWorkspaceData);
+  const [workspaceData, setWorkspaceData] = useState<WorkspaceData>(freshWorkspaceData);
   const activeWorkspace = workspaceData.workspaces.find((item) => item.id === workspaceData.activeWorkspaceId) ?? workspaceData.workspaces[0];
   const store = activeWorkspace.store;
   const setStore: React.Dispatch<React.SetStateAction<Store>> = (update) => setWorkspaceData((previous) => ({
@@ -240,6 +247,7 @@ function App() {
   const [panel, setPanel] = useState<Panel>("params");
   const [sidebar, setSidebar] = useState<Sidebar>("requests");
   const [search, setSearch] = useState("");
+  const [searchCollapsed, setSearchCollapsed] = useState<string[]>([]);
   const [runtime, setRuntime] = useState<Record<string, string>>({});
   const [response, setResponse] = useState<RunResult | null>(null);
   const [responseView, setResponseView] = useState<"body" | "headers" | "cookies">("body");
@@ -257,6 +265,10 @@ function App() {
   const [openApiRequestNames, setOpenApiRequestNames] = useState<OpenApiRequestNames>(() =>
     localStorage.getItem("kodama.openApiRequestNames") === "path" ? "path" : "summary"
   );
+  const [openApiScheme, setOpenApiScheme] = useState<OpenApiScheme>(() => {
+    const saved = localStorage.getItem("kodama.openApiScheme");
+    return saved === "http" || saved === "https" ? saved : "document";
+  });
   const [collapsedByWorkspace, setCollapsedByWorkspace] = useState<Record<string, string[]>>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("kodama.collapsedByWorkspace") ?? "{}");
@@ -269,10 +281,27 @@ function App() {
     const current = previous[id] ?? [];
     return { ...previous, [id]: typeof update === "function" ? update(current) : update };
   });
+  const isNodeCollapsed = (id: string) => search ? searchCollapsed.includes(id) : collapsed.includes(id);
+  const toggleNode = (id: string) => {
+    const closing = !isNodeCollapsed(id);
+    if (search) setSearchCollapsed((previous) => closing ? [...new Set([...previous, id])] : previous.filter((value) => value !== id));
+    setCollapsed((previous) => closing ? [...new Set([...previous, id])] : previous.filter((value) => value !== id));
+  };
+  const expandNodes = (...ids: string[]) => {
+    setCollapsed((previous) => previous.filter((id) => !ids.includes(id)));
+    setSearchCollapsed((previous) => previous.filter((id) => !ids.includes(id)));
+  };
   const [renameDialog, setRenameDialog] = useState<{ name: string; apply: (name: string) => void } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteDialog, setDeleteDialog] = useState<{ name: string; description?: string; apply: () => void } | null>(null);
   const [responseSearch, setResponseSearch] = useState("");
+  const [activeResponseMatch, setActiveResponseMatch] = useState(0);
+  const [responseDock, setResponseDock] = useState<"bottom" | "right">(() => localStorage.getItem("kodama.responseDock") === "right" ? "right" : "bottom");
+  const [responseSizes, setResponseSizes] = useState(() => {
+    try { const sizes = JSON.parse(localStorage.getItem("kodama.responseSizes") ?? "{}"); return { bottom: Math.max(25, Math.min(75, Number(sizes.bottom) || 53)), right: Math.max(25, Math.min(75, Number(sizes.right) || 55)) }; }
+    catch { return { bottom: 53, right: 55 }; }
+  });
+  const workbenchRef = useRef<HTMLDivElement>(null);
   const [curlDialog, setCurlDialog] = useState(false);
   const [curlText, setCurlText] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -283,11 +312,12 @@ function App() {
   });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [requestDropAfter, setRequestDropAfter] = useState(false);
   const [collectionDropTarget, setCollectionDropTarget] = useState<{ id: string; position: "before" | "after" } | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [tabDropTarget, setTabDropTarget] = useState<{ id: string; after: boolean } | null>(null);
-  const draggingRequest = useRef<{ requestId: string; collectionId: string } | null>(null);
-  const draggingCollection = useRef<string | null>(null);
+  const pointerDragRef = useRef<{ payload: PointerDrag; x: number; y: number; active: boolean } | null>(null);
+  const suppressNextClickRef = useRef(false);
   const [headerVariable, setHeaderVariable] = useState<{ name: string; value: string } | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
@@ -310,11 +340,14 @@ function App() {
     return () => document.documentElement.classList.remove("dark");
   }, [theme]);
   useEffect(() => { localStorage.setItem("kodama.openApiRequestNames", openApiRequestNames); }, [openApiRequestNames]);
+  useEffect(() => { localStorage.setItem("kodama.openApiScheme", openApiScheme); }, [openApiScheme]);
   useEffect(() => { localStorage.setItem("kodama.collapsedByWorkspace", JSON.stringify(collapsedByWorkspace)); }, [collapsedByWorkspace]);
+  useEffect(() => { localStorage.setItem("kodama.responseDock", responseDock); }, [responseDock]);
+  useEffect(() => { localStorage.setItem("kodama.responseSizes", JSON.stringify(responseSizes)); }, [responseSizes]);
 
   useEffect(() => {
     invoke<WorkspaceData | null>("load_workspaces").then((data) => {
-      const next = data ?? demoWorkspaceData();
+      const next = data ?? freshWorkspaceData();
       next.workspaces = next.workspaces.map((item) => ({ ...item, store: withDefaultEnvironment(item.store) }));
       activeWorkspaceRef.current = next.activeWorkspaceId;
       setWorkspaceData(next);
@@ -374,8 +407,9 @@ function App() {
           const source = item.source;
           if (!source?.path || syncingSourcesRef.current.has(item.id)) continue;
           try {
-            const stamp = await invoke<string>("source_file_stamp", { path: source.path });
-            if (stamp !== source.stamp && !stopped) {
+            const stamps = await Promise.all([source.path, ...(source.dependencies ?? []).map((item) => item.path)].map((path) => invoke<string>("source_file_stamp", { path })));
+            const changed = stamps[0] !== source.stamp || (source.dependencies ?? []).some((item, index) => stamps[index + 1] !== item.stamp);
+            if (changed && !stopped) {
               const file = await invoke<SourceFile>("read_source_file", { path: source.path });
               if (!stopped) await applySourceFile(item.id, file, "merge", false);
             }
@@ -388,7 +422,7 @@ function App() {
     void checkSources();
     const timer = window.setInterval(() => { void checkSources(); }, 10000);
     return () => { stopped = true; window.clearInterval(timer); };
-  }, [ready, workspaceData.activeWorkspaceId, openApiRequestNames]);
+  }, [ready, workspaceData.activeWorkspaceId, openApiRequestNames, openApiScheme]);
 
   const current = findRequest(store, selectedId);
   const request = current?.request;
@@ -448,17 +482,33 @@ function App() {
     () =>
       store.collections.map((item) => ({
         item,
-        requests: item.requests.filter((value) =>
-          `${value.name} ${value.method} ${value.url}`.toLowerCase().includes(
-            search.toLowerCase(),
-          )
+        requests: item.name.toLowerCase().includes(search.toLowerCase()) ? item.requests : item.requests.filter((value) =>
+          `${value.name} ${value.method} ${value.url}`.toLowerCase().includes(search.toLowerCase())
         ),
-      })).filter(({ item, requests }) =>
-        !search || item.name.toLowerCase().includes(search.toLowerCase()) ||
-        requests.length
-      ),
+      })).filter(({ requests }) => !search || requests.length),
     [store.collections, search],
   );
+  const visibleNodeIds = useMemo(() => visibleCollections.flatMap(({ item, requests }) => {
+    const ids = new Set([item.id]);
+    if (!search) item.folders.forEach((folder) => ids.add(folder.id));
+    else requests.forEach((request) => {
+      let parentId = request.folderId;
+      const seen = new Set<string>();
+      while (parentId && !seen.has(parentId)) {
+        seen.add(parentId);
+        ids.add(parentId);
+        parentId = item.folders.find((folder) => folder.id === parentId)?.parentId ?? null;
+      }
+    });
+    return [...ids];
+  }), [visibleCollections, search]);
+  const allFoldersExpanded = visibleNodeIds.every((id) => !isNodeCollapsed(id));
+  const toggleAllFolders = () => {
+    const ids = new Set(visibleNodeIds);
+    if (search) setSearchCollapsed(allFoldersExpanded ? [...ids] : []);
+    setCollapsed((previous) => allFoldersExpanded ? [...new Set([...previous, ...ids])] : previous.filter((id) => !ids.has(id)));
+  };
+  const visibleVariables = variableInspectorEntries(resolvedVariables);
   const responseBody = useMemo(() => {
     if (!response || response.binary) return "";
     try {
@@ -473,17 +523,24 @@ function App() {
   const responseContentType = response?.headers.find(([key]) => key.toLowerCase() === "content-type")?.[1] ?? "Unknown content type";
   const responseIsHtml = !!response && (/text\/html|application\/xhtml\+xml/i.test(responseContentType) || /^\s*(?:<!doctype\s+html|<html\b)/i.test(response.body));
   const responseMatches = responseSearch ? responseBody.toLowerCase().split(responseSearch.toLowerCase()).length - 1 : 0;
+  useEffect(() => { setActiveResponseMatch(0); }, [responseSearch, responseBody]);
+  useEffect(() => {
+    if (!responseSearch || !responseMatches) return;
+    workbenchRef.current?.querySelectorAll(".response-body mark")[activeResponseMatch]?.scrollIntoView({ block: "nearest" });
+  }, [activeResponseMatch, responseMatches, responseSearch, responseView]);
   const highlightedResponse = () => {
     if (!responseSearch) return responseBody;
     const parts: React.ReactNode[] = [];
     const lower = responseBody.toLowerCase();
     const needle = responseSearch.toLowerCase();
     let index = 0;
+    let matchIndex = 0;
     while (index < responseBody.length) {
       const found = lower.indexOf(needle, index);
       if (found < 0) { parts.push(responseBody.slice(index)); break; }
       parts.push(responseBody.slice(index, found));
-      parts.push(<mark key={found}>{responseBody.slice(found, found + needle.length)}</mark>);
+      parts.push(<mark key={found} className={matchIndex === activeResponseMatch ? "active" : ""}>{responseBody.slice(found, found + needle.length)}</mark>);
+      matchIndex++;
       index = found + needle.length;
     }
     return parts;
@@ -508,12 +565,12 @@ function App() {
       });
     }
   };
-  const open = (id: string) => {
+  const open = (id: string, keepSidebar = false) => {
     setSelectedId(id);
     setTabs((previous) => previous.includes(id) ? previous : [...previous, id]);
     setResponse(null);
     setError("");
-    setSidebar("requests");
+    if (!keepSidebar) setSidebar("requests");
   };
   const rename = (original: string, apply: (name: string) => void) => {
     setRenameValue(original);
@@ -526,53 +583,38 @@ function App() {
     });
     open(item.id);
   };
-  const removeRequest = () => {
-    if (!request || !collection) return;
-    const requestId = request.id;
-    const collectionId = collection.id;
-    setDeleteDialog({ name: request.name, apply: () => {
-      editCollection(collectionId, (next) => {
-        next.requests = next.requests.filter((item) => item.id !== requestId);
-      });
-      setTabs((previous) => previous.filter((id) => id !== requestId));
-      setSelectedId(null);
-    } });
+  const moveRequestById = (requestId: string, collectionId: string, direction: -1 | 1) => {
+    editCollection(collectionId, (next) => {
+      const index = next.requests.findIndex((item) => item.id === requestId);
+      if (index < 0) return;
+      const siblingIndices = next.requests.flatMap((item, position) => item.folderId === next.requests[index].folderId ? [position] : []);
+      const siblingIndex = siblingIndices.indexOf(index);
+      const other = siblingIndices[siblingIndex + direction];
+      if (other === undefined) return;
+      [next.requests[index], next.requests[other]] = [next.requests[other], next.requests[index]];
+    });
   };
-  const moveRequest = (direction: -1 | 1) => {
-    if (!request || !collection) return;
-    editCollection(collection.id, (next) => {
-      const index = next.requests.findIndex((item) => item.id === request.id);
-      const other = index + direction;
-      if (index >= 0 && other >= 0 && other < next.requests.length) {
-        [next.requests[index], next.requests[other]] = [
-          next.requests[other],
-          next.requests[index],
-        ];
-      }
+  const moveFolderById = (folderId: string, collectionId: string, direction: -1 | 1) => {
+    editCollection(collectionId, (next) => {
+      const index = next.folders.findIndex((item) => item.id === folderId);
+      if (index < 0) return;
+      const siblingIndices = next.folders.flatMap((item, position) => item.parentId === next.folders[index].parentId ? [position] : []);
+      const siblingIndex = siblingIndices.indexOf(index);
+      const other = siblingIndices[siblingIndex + direction];
+      if (other === undefined) return;
+      [next.folders[index], next.folders[other]] = [next.folders[other], next.folders[index]];
     });
   };
 
-  const startRequestDrag = (event: React.DragEvent, requestId: string, collectionId: string) => {
-    draggingRequest.current = { requestId, collectionId };
-    event.dataTransfer.setData("text/plain", `kodama-request:${requestId}:${collectionId}`);
-    event.dataTransfer.effectAllowed = "move";
-  };
-
   const moveRequestTo = (
-    event: React.DragEvent,
+    source: { requestId: string; collectionId: string },
     targetCollectionId: string,
     targetFolderId: string | null,
     anchorRequestId?: string,
     insertAfter = false,
   ) => {
-    event.preventDefault();
-    event.stopPropagation();
     setDragOverId(null);
-    try {
-      const payload = event.dataTransfer.getData("text/plain");
-      const source = draggingRequest.current ?? (payload.startsWith("kodama-request:") ? (() => { const [, requestId, collectionId] = payload.split(":"); return { requestId, collectionId }; })() : null);
-      if (!source) return;
-      editStore((next) => {
+    editStore((next) => {
         const sourceCollection = next.collections.find((item) => item.id === source.collectionId);
         const targetCollection = next.collections.find((item) => item.id === targetCollectionId);
         if (!sourceCollection || !targetCollection || source.requestId === anchorRequestId) return;
@@ -592,23 +634,9 @@ function App() {
           if (insertAt < 0) insertAt = targetCollection.requests.length;
         }
         targetCollection.requests.splice(insertAt, 0, moving);
-      });
-    } catch {
-      // Ignore drops without a Kodama request payload.
-    } finally {
-      draggingRequest.current = null;
-    }
+    });
   };
-  const startCollectionDrag = (event: React.DragEvent, collectionId: string) => {
-    draggingCollection.current = collectionId;
-    event.dataTransfer.setData("text/plain", `kodama-collection:${collectionId}`);
-    event.dataTransfer.effectAllowed = "move";
-  };
-  const moveCollectionTo = (event: React.DragEvent, targetCollectionId: string, position: "before" | "after") => {
-    event.preventDefault();
-    event.stopPropagation();
-    const payload = event.dataTransfer.getData("text/plain");
-    const sourceId = draggingCollection.current ?? (payload.startsWith("kodama-collection:") ? payload.slice("kodama-collection:".length) : null);
+  const moveCollectionTo = (sourceId: string, targetCollectionId: string, position: "before" | "after") => {
     setCollectionDropTarget(null);
     if (!sourceId || sourceId === targetCollectionId) return;
     editStore((next) => {
@@ -618,13 +646,80 @@ function App() {
       const insertAt = next.collections.findIndex((item) => item.id === targetCollectionId);
       next.collections.splice(insertAt < 0 ? next.collections.length : insertAt + (position === "after" ? 1 : 0), 0, moving);
     });
-    draggingCollection.current = null;
   };
-  const duplicateRequest = () => {
-    if (!request || !collection) return;
-    duplicateRequestById(request.id, collection.id);
+  const beginPointerDrag = (event: React.PointerEvent, payload: PointerDrag) => {
+    if (event.button !== 0 || event.pointerType === "touch" || (event.target as HTMLElement).closest(".tab-close")) return;
+    pointerDragRef.current = { payload, x: event.clientX, y: event.clientY, active: false };
+    const origin = { x: event.clientX, y: event.clientY };
+    const targetAt = (x: number, y: number) => document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop-type]");
+    let x = event.clientX;
+    let y = event.clientY;
+    const updateTarget = () => {
+      const drag = pointerDragRef.current;
+      if (!drag?.active) return;
+      const target = targetAt(x, y);
+      const targetType = target?.dataset.dropType;
+      if (payload.kind === "request") {
+        const id = targetType === "request" ? `request:${target?.dataset.requestId}` : targetType === "folder" ? `folder:${target?.dataset.collectionId}:${target?.dataset.folderId}` : targetType === "collection" ? `root:${target?.dataset.collectionId}` : null;
+        setDragOverId(id === `request:${payload.requestId}` ? null : id);
+        if (targetType === "request" && target) { const rect = target.getBoundingClientRect(); setRequestDropAfter(y >= rect.top + rect.height / 2); }
+      } else if (payload.kind === "collection") {
+        const rect = target?.getBoundingClientRect();
+        setCollectionDropTarget(targetType === "collection" && target && target.dataset.collectionId !== payload.collectionId && rect ? { id: target.dataset.collectionId ?? "", position: y < rect.top + rect.height / 2 ? "before" : "after" } : null);
+      } else {
+        const rect = target?.getBoundingClientRect();
+        setTabDropTarget(targetType === "tab" && target && target.dataset.requestId !== payload.requestId && rect ? { id: target.dataset.requestId ?? "", after: x > rect.left + rect.width / 2 } : null);
+      }
+    };
+    const scrollTimer = window.setInterval(() => {
+      if (!pointerDragRef.current?.active) return;
+      const container = payload.kind === "tab" ? document.querySelector<HTMLElement>(".tabs") : document.querySelector<HTMLElement>(".sidebar-body");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (payload.kind === "tab") container.scrollLeft += x < rect.left + 38 ? -14 : x > rect.right - 38 ? 14 : 0;
+      else container.scrollTop += y < rect.top + 38 ? -14 : y > rect.bottom - 38 ? 14 : 0;
+      updateTarget();
+    }, 30);
+    const move = (next: PointerEvent) => {
+      x = next.clientX; y = next.clientY;
+      const drag = pointerDragRef.current;
+      if (!drag) return;
+      if (!drag.active && Math.hypot(x - origin.x, y - origin.y) >= 6) {
+        drag.active = true;
+        document.body.classList.add("pointer-dragging");
+        if (payload.kind === "tab") setDraggingTabId(payload.requestId);
+      }
+      updateTarget();
+    };
+    const finish = () => {
+      window.clearInterval(scrollTimer);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      const drag = pointerDragRef.current;
+      if (drag?.active) {
+        suppressNextClickRef.current = true;
+        window.setTimeout(() => { suppressNextClickRef.current = false; }, 0);
+        const target = targetAt(x, y);
+        const rect = target?.getBoundingClientRect();
+        if (payload.kind === "request") {
+          if (target?.dataset.dropType === "request") moveRequestTo(payload, target.dataset.collectionId ?? "", target.dataset.folderId || null, target.dataset.requestId, !!rect && y >= rect.top + rect.height / 2);
+          else if (target?.dataset.dropType === "folder" || target?.dataset.dropType === "collection") moveRequestTo(payload, target.dataset.collectionId ?? "", target.dataset.folderId || null);
+        } else if (payload.kind === "collection" && target?.dataset.dropType === "collection") moveCollectionTo(payload.collectionId, target.dataset.collectionId ?? "", !!rect && y >= rect.top + rect.height / 2 ? "after" : "before");
+        else if (payload.kind === "tab" && target?.dataset.dropType === "tab" && target.dataset.requestId !== payload.requestId) {
+          const from = tabs.indexOf(payload.requestId);
+          const to = tabs.indexOf(target.dataset.requestId ?? "");
+          if (from >= 0 && to >= 0) setTabs((previous) => { const result = [...previous]; const [moving] = result.splice(from, 1); result.splice(to + (!!rect && x > rect.left + rect.width / 2 ? 1 : 0) - (from < to ? 1 : 0), 0, moving); return result; });
+        }
+      }
+      pointerDragRef.current = null;
+      document.body.classList.remove("pointer-dragging");
+      setDragOverId(null); setCollectionDropTarget(null); setTabDropTarget(null); setDraggingTabId(null); setRequestDropAfter(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
   };
-
   const duplicateRequestById = (requestId: string, collectionId: string) => {
     const source = findRequest(store, requestId)?.request;
     if (!source) return;
@@ -671,6 +766,12 @@ function App() {
   const resizeSidebar = (delta: number) => setSidebarWidth((width) =>
     Math.max(210, Math.min(Math.min(window.innerWidth * 0.48, 540), width + delta)),
   );
+  const resizeResponse = (clientX: number, clientY: number) => {
+    const rect = workbenchRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const percent = responseDock === "bottom" ? (clientY - rect.top) / rect.height * 100 : (clientX - rect.left) / rect.width * 100;
+    setResponseSizes((previous) => ({ ...previous, [responseDock]: Math.max(25, Math.min(75, percent)) }));
+  };
 
   const showRequestMenu = (event: React.MouseEvent, requestId: string, collectionId: string) => {
     event.preventDefault();
@@ -808,9 +909,11 @@ function App() {
   }
   async function importOpenApiFile() {
     try {
-      const document = await invoke<unknown | null>("import_openapi_file");
-      if (!document) return;
-      const imported = importOpenApi(document, openApiRequestNames);
+      const file = await invoke<SourceFile | null>("import_openapi_file");
+      if (!file) return;
+      const parsed = await parseOpenApiSource(file);
+      const bundled = await bundleOpenApiRefs(file, parsed.document, (path) => invoke<SourceFile>("read_source_file", { path }));
+      const imported = importOpenApi(bundled.document, openApiRequestNames, openApiScheme);
       setStore((previous) => ({ ...previous, collections: [...previous.collections, ...imported.collections] }));
       const first = imported.collections[0].requests[0];
       if (first) open(first.id);
@@ -819,14 +922,15 @@ function App() {
   }
   async function prepareSourceFile(file: SourceFile) {
     const parsed = await parseOpenApiSource(file);
-    const imported = importOpenApi(parsed.document, openApiRequestNames).collections[0];
+    const bundled = await bundleOpenApiRefs(file, parsed.document, (path) => invoke<SourceFile>("read_source_file", { path }));
+    const imported = importOpenApi(bundled.document, openApiRequestNames, openApiScheme).collections[0];
     const used = new Set(imported.requests.flatMap((item) => [item.url, item.body.text, ...item.query.flatMap((row) => [row.key, row.value]), ...item.pathParams.map((row) => row.value), ...item.headers.flatMap((row) => [row.key, row.value])]
       .flatMap((text) => [...text.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)].map((match) => match[1]))));
     const placeholders = parsed.placeholders.filter((name) => used.has(name));
     for (const name of placeholders) {
       if (!imported.variables.some((item) => item.name === name)) imported.variables.push({ ...variable(), name });
     }
-    return { imported, details: { path: file.path, stamp: file.stamp, placeholders } };
+    return { imported, details: { path: file.path, stamp: file.stamp, dependencies: bundled.dependencies, placeholders } };
   }
   async function applySourceFile(collectionId: string, file: SourceFile, mode: "merge" | "replace", announce: boolean) {
     const targetWorkspaceId = workspaceData.activeWorkspaceId;
@@ -926,6 +1030,7 @@ function App() {
     setConfigCollectionId(null);
     setContextMenu(null);
     setSearch("");
+    setSearchCollapsed([]);
   }
   async function clearWorkspaceCookies() {
     try { await invoke("clear_cookies"); return true; }
@@ -986,7 +1091,7 @@ function App() {
           <button className={`icon config-button${Object.values(sourceStatus).some((item) => item.error) ? " source-error" : ""}`} aria-label="Settings" title="Settings" onClick={() => { setConfigCollectionId(collection?.id ?? store.collections[0]?.id ?? null); setConfigOpen(true); }}><Settings2 size={17} /></button>
         </div>
       </header>
-      <div className="workspace">
+      <div className="workspace" onClickCapture={(event) => { if (suppressNextClickRef.current) { event.preventDefault(); event.stopPropagation(); suppressNextClickRef.current = false; } }}>
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <nav className="sidebar-tabs">
             {(["requests", "environments", "variables", "history"] as Sidebar[])
@@ -1010,6 +1115,7 @@ function App() {
             <div className="sidebar-body">
               <div className="side-heading">
                 <strong>Collections</strong>
+                <button className="icon" aria-label={allFoldersExpanded ? "Collapse all folders" : "Expand all folders"} title={allFoldersExpanded ? "Collapse all folders" : "Expand all folders"} disabled={!visibleNodeIds.length} onClick={toggleAllFolders}>{allFoldersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button>
                 <button
                   className="icon"
                   title="New collection"
@@ -1026,43 +1132,38 @@ function App() {
                 aria-label="Search requests"
                 placeholder="Search requests…"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => { setSearch(event.target.value); setSearchCollapsed([]); }}
               />
               {visibleCollections.map(({ item, requests }) => {
+                const folderHasMatches = (folderId: string): boolean => requests.some((value) => value.folderId === folderId) || item.folders.some((child) => child.parentId === folderId && folderHasMatches(child.id));
                 const requestRow = (value: ApiRequest, depth = 0) => (
-                  <button
-                    key={value.id}
-                    draggable
-                    className={`request-link${depth ? " nested" : ""}${selectedId === value.id ? " selected" : ""}${dragOverId === `request:${value.id}` ? " drop-target" : ""}`}
-                    onClick={() => open(value.id)}
-                    onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
-                    onDragStart={(event) => startRequestDrag(event, value.id, item.id)}
-                    onDragEnd={() => { draggingRequest.current = null; setDragOverId(null); }}
-                    onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverId(`request:${value.id}`); }}
-                    onDragLeave={() => setDragOverId(null)}
-                    onDrop={(event) => {
-                      const insertAfter = event.clientY >= event.currentTarget.getBoundingClientRect().top + event.currentTarget.getBoundingClientRect().height / 2;
-                      moveRequestTo(event, item.id, value.folderId, value.id, insertAfter);
-                    }}
-                  >
-                    <span className={`method ${value.method.toLowerCase()}`}>{value.method}</span>
-                    <span>{value.name}</span>
-                  </button>
+                  <div className="request-row" key={value.id}>
+                    <button
+                      data-drop-type="request" data-request-id={value.id} data-collection-id={item.id} data-folder-id={value.folderId ?? ""}
+                      className={`request-link${depth ? " nested" : ""}${selectedId === value.id ? " selected" : ""}${dragOverId === `request:${value.id}` ? (requestDropAfter ? " drop-after" : " drop-before") : ""}`}
+                      onPointerDown={(event) => beginPointerDrag(event, { kind: "request", requestId: value.id, collectionId: item.id })}
+                      onClick={() => open(value.id)}
+                      onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
+                    >
+                      <span className={`method ${value.method.toLowerCase()}`}>{value.method}</span>
+                      <span>{value.name}</span>
+                    </button>
+                    <button className="request-menu-trigger" aria-label={`Actions for ${value.name}`} title="Request actions" onClick={(event) => showRequestMenu(event, value.id, item.id)}><Ellipsis size={15} /></button>
+                  </div>
                 );
                 const renderFolder = (folder: typeof item.folders[number], depth = 0): React.ReactNode => {
+                  if (search && !folderHasMatches(folder.id)) return null;
                   const targetId = `folder:${item.id}:${folder.id}`;
-                  const isCollapsed = collapsed.includes(folder.id);
+                  const isCollapsed = isNodeCollapsed(folder.id);
                   return <div className={`folder-node${depth ? " child-folder" : ""}`} key={folder.id}>
                     <div
+                      data-drop-type="folder" data-collection-id={item.id} data-folder-id={folder.id}
                       className={`folder-heading${dragOverId === targetId ? " drop-target" : ""}`}
                       onContextMenu={(event) => showFolderMenu(event, item.id, folder.id)}
-                      onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move"; setDragOverId(targetId); }}
-                      onDragLeave={() => setDragOverId(null)}
-                      onDrop={(event) => moveRequestTo(event, item.id, folder.id)}
                     >
                       <button
                         aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${folder.name}`}
-                        onClick={() => setCollapsed((previous) => previous.includes(folder.id) ? previous.filter((id) => id !== folder.id) : [...previous, folder.id])}
+                        onClick={() => toggleNode(folder.id)}
                         onDoubleClick={() => rename(folder.name, (name) => editCollection(item.id, (next) => {
                           const found = next.folders.find((value) => value.id === folder.id);
                           if (found) found.name = name;
@@ -1070,8 +1171,9 @@ function App() {
                       >
                         {isCollapsed ? "▸" : "▾"} {folder.name}
                       </button>
-                      <button className="icon" title="New request in folder" onClick={() => addRequest(item.id, folder.id)}>＋</button>
-                      <button className="icon" title="New subfolder" onClick={() => editCollection(item.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id }))}>▣</button>
+                      <button className="icon" title="New request in folder" onClick={() => { addRequest(item.id, folder.id); expandNodes(item.id, folder.id); }}>＋</button>
+                      <button className="icon" title="New subfolder" onClick={() => { editCollection(item.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id })); expandNodes(item.id, folder.id); }}>▣</button>
+                      <button className="icon" aria-label={`Actions for folder ${folder.name}`} title="Folder actions" onClick={(event) => showFolderMenu(event, item.id, folder.id)}><Ellipsis size={14} /></button>
                     </div>
                     {!isCollapsed && <>
                       {requests.filter((value) => value.folderId === folder.id).map((value) => requestRow(value, depth + 1))}
@@ -1085,69 +1187,44 @@ function App() {
                 return <div className={`collection${collectionDropPosition ? ` collection-drop-${collectionDropPosition}` : ""}`} key={item.id}>
                   <div className="collection-heading">
                     <button
+                      data-drop-type="collection" data-collection-id={item.id}
                       className={`collection-name${dragOverId === `root:${item.id}` ? " drop-target" : ""}`}
-                      draggable
-                      onClick={() =>
-                        setCollapsed((previous) =>
-                          previous.includes(item.id)
-                            ? previous.filter((id) =>
-                              id !== item.id
-                            )
-                            : [...previous, item.id]
-                        )}
+                      onPointerDown={(event) => beginPointerDrag(event, { kind: "collection", collectionId: item.id })}
+                      onClick={() => toggleNode(item.id)}
                       onDoubleClick={() =>
                         rename(item.name, (name) =>
                           editCollection(item.id, (next) => {
                             next.name = name;
                           }))}
-                      onDragStart={(event) => startCollectionDrag(event, item.id)}
-                      onDragEnd={() => { draggingCollection.current = null; setCollectionDropTarget(null); setDragOverId(null); }}
-                      onDragOver={(event) => {
-                        event.preventDefault();
-                        const draggingCollectionId = draggingCollection.current;
-                        if (draggingCollectionId && draggingCollectionId !== item.id) {
-                          event.dataTransfer.dropEffect = "move";
-                          const bounds = event.currentTarget.getBoundingClientRect();
-                          setCollectionDropTarget({ id: item.id, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" });
-                        } else if (draggingCollectionId) {
-                          setCollectionDropTarget(null);
-                        } else {
-                          event.dataTransfer.dropEffect = "move";
-                          setDragOverId(`root:${item.id}`);
-                        }
-                      }}
-                      onDragLeave={() => { setCollectionDropTarget(null); setDragOverId(null); }}
-                      onDrop={(event) => {
-                        if (draggingCollection.current || event.dataTransfer.getData("text/plain").startsWith("kodama-collection:")) moveCollectionTo(event, item.id, collectionDropPosition ?? "before");
-                        else moveRequestTo(event, item.id, null);
-                      }}
                       onContextMenu={(event) => showCollectionMenu(event, item.id)}
                     >
-                      {collapsed.includes(item.id) ? "▸" : "▾"} {item.name}
+                      {isNodeCollapsed(item.id) ? "▸" : "▾"} {item.name}
                     </button>
                     <button
                       className="icon"
                       title="New request"
-                      onClick={() => addRequest(item.id)}
+                      onClick={() => { addRequest(item.id); expandNodes(item.id); }}
                     >
                       ＋
                     </button>
                     <button
                       className="icon"
                       title="New folder"
-                      onClick={() =>
+                      onClick={() => {
                         editCollection(item.id, (next) => {
                           next.folders.push({
                             id: uid(),
                             name: "New folder",
                             parentId: null,
                           });
-                        })}
+                        });
+                        expandNodes(item.id);
+                      }}
                     >
                       ▣
                     </button>
                   </div>
-                  {!collapsed.includes(item.id) && (
+                  {!isNodeCollapsed(item.id) && (
                     <>
                       {requests.filter((value) => !value.folderId).map((value) => requestRow(value))}
                       {rootFolders.map((folder) => renderFolder(folder))}
@@ -1297,7 +1374,7 @@ function App() {
                   })}
               />
               <div className="scope-title">Resolved</div>
-              {Object.entries(resolvedVariables).map(([name, item]) => (
+              {visibleVariables.map(([name, item]) => (
                 <div className="inspector" key={name}>
                   <code>{name}</code>
                   <Tooltip><TooltipTrigger asChild><span tabIndex={0} className={variableHasValue(name, resolvedVariables) ? "" : "variable-unset"}>{variableHasValue(name, resolvedVariables) ? item.secret ? "••••••" : item.value : "Unset"}</span></TooltipTrigger>
@@ -1316,7 +1393,13 @@ function App() {
               </div>
               {history.length
                 ? history.map((item) => (
-                  <div className="history-record" key={item.id}><button className="history-item" onClick={() => setExpandedHistory((previous) => previous === item.id ? null : item.id)} aria-expanded={expandedHistory === item.id}>
+                  <div className="history-record" key={item.id}><button className="history-item" onClick={() => {
+                    setExpandedHistory((previous) => previous === item.id ? null : item.id);
+                    if (!findRequest(store, item.requestId)) { toast.error("This request no longer exists in the workspace"); return; }
+                    open(item.requestId, true);
+                    if (item.response) setResponse(item.response);
+                    else setError(item.error ?? "This response body was not retained in history because it was large or binary.");
+                  }} aria-expanded={expandedHistory === item.id}>
                     <span className={`method ${item.method.toLowerCase()}`}>
                       {item.method}
                     </span>
@@ -1329,7 +1412,6 @@ function App() {
                     <time>{new Date(item.date).toLocaleString()}</time>
                     <code title={item.url}>{item.url}</code>
                     {item.error ? <span className="failure">{item.error}</span> : <span>{(item.size / 1024).toFixed(1)} KB · {item.headerCount} response headers</span>}
-                    <div className="history-detail-actions"><button className="subtle small" disabled={!item.response || !findRequest(store, item.requestId)} title={item.response ? "Open saved response" : "Large and binary response bodies are not retained in history"} onClick={() => { if (item.response) { open(item.requestId); setResponse(item.response); } }}>Open response</button><button className="subtle small" onClick={() => { void navigator.clipboard.writeText(item.url).then(() => toast.success("URL copied")); }}>Copy URL</button></div>
                   </div>}</div>
                 ))
                 : (
@@ -1371,33 +1453,11 @@ function App() {
               return item && (
                 <button
                   key={id}
+                  data-drop-type="tab" data-request-id={id}
                   className={`tab${selectedId === id ? " active" : ""}${draggingTabId === id ? " dragging" : ""}${tabDropTarget?.id === id && draggingTabId !== id ? (tabDropTarget.after ? " drop-after" : " drop-before") : ""}`}
                   title="Drag to reorder tabs"
                   onClick={() => open(id)}
-                  draggable
-                  onDragStart={(event) => { setDraggingTabId(id); event.dataTransfer.setData("text/plain", id); event.dataTransfer.effectAllowed = "move"; }}
-                  onDragEnd={() => { setDraggingTabId(null); setTabDropTarget(null); }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setTabDropTarget({ id, after: event.clientX > rect.left + rect.width / 2 });
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const from = tabs.indexOf(draggingTabId ?? event.dataTransfer.getData("text/plain"));
-                    const target = tabs.indexOf(id);
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    const after = event.clientX > rect.left + rect.width / 2;
-                    setDraggingTabId(null);
-                    setTabDropTarget(null);
-                    if (from < 0 || target < 0 || from === target) return;
-                    const reordered = [...tabs];
-                    const [moving] = reordered.splice(from, 1);
-                    const insertion = target + (after ? 1 : 0) - (from < target ? 1 : 0);
-                    reordered.splice(insertion, 0, moving);
-                    setTabs(reordered);
-                  }}
+                  onPointerDown={(event) => beginPointerDrag(event, { kind: "tab", requestId: id })}
                   onContextMenu={(event) => showTabMenu(event, id)}
                 >
                   <GripVertical className="tab-grip" size={14} aria-hidden="true" />
@@ -1431,7 +1491,7 @@ function App() {
           </div>
           {request && collection
             ? (
-              <>
+              <div ref={workbenchRef} className={`workbench dock-${responseDock}`} style={responseDock === "bottom" ? { gridTemplateRows: `${responseSizes.bottom}% 7px minmax(0, 1fr)` } : { gridTemplateColumns: `${responseSizes.right}% 7px minmax(0, 1fr)` }}>
                 <div className="request-area">
                   <div className="request-heading">
                     <div>
@@ -1455,54 +1515,26 @@ function App() {
                           })}
                       />
                     </div>
-                    <div className="request-tools">
-                      <button
-                        className="subtle small"
-                        onClick={duplicateRequest}
-                      >
-                        Duplicate
-                      </button>
-                      <button className="subtle small" onClick={() => { void navigator.clipboard.writeText(exportCurl(request)).then(() => toast.success("cURL copied"), (err) => toast.error(message(err))); }}>Copy cURL</button>
-                      <button
-                        className="subtle small"
-                        onClick={() => moveRequest(-1)}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        className="subtle small"
-                        onClick={() => moveRequest(1)}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        className="subtle small danger"
-                        onClick={removeRequest}
-                      >
-                        Delete
-                      </button>
-                    </div>
                   </div>
                   <div className="urlbar">
-                    <select
-                      aria-label="HTTP method"
-                      className={`method-select ${request.method.toLowerCase()}`}
-                      value={request.method}
-                      onChange={(event) =>
-                        editRequest((next) => {
-                          next.method = event.target.value;
-                        })}
-                    >
-                      {[
-                        "GET",
-                        "POST",
-                        "PUT",
-                        "PATCH",
-                        "DELETE",
-                        "HEAD",
-                        "OPTIONS",
-                      ].map((method) => <option key={method}>{method}</option>)}
-                    </select>
+                    <SelectPrimitive.Root value={request.method} onValueChange={(method) => editRequest((next) => { next.method = method; })}>
+                      <SelectPrimitive.Trigger aria-label="HTTP method" className={`method-trigger ${request.method.toLowerCase()}`}>
+                        <span className="method-dot" aria-hidden="true" />
+                        <SelectPrimitive.Value />
+                        <SelectPrimitive.Icon className="method-chevron"><ChevronDown size={14} /></SelectPrimitive.Icon>
+                      </SelectPrimitive.Trigger>
+                      <SelectPrimitive.Portal>
+                        <SelectPrimitive.Content className={`method-menu kodama-${theme}`} position="popper" sideOffset={6} align="start">
+                          <SelectPrimitive.Viewport className="method-menu-viewport">
+                            {HTTP_METHODS.map((method) => <SelectPrimitive.Item key={method} value={method} className={`method-menu-item ${method.toLowerCase()}`}>
+                              <span className="method-dot" aria-hidden="true" />
+                              <SelectPrimitive.ItemText>{method}</SelectPrimitive.ItemText>
+                              <SelectPrimitive.ItemIndicator className="method-check"><Check size={14} /></SelectPrimitive.ItemIndicator>
+                            </SelectPrimitive.Item>)}
+                          </SelectPrimitive.Viewport>
+                        </SelectPrimitive.Content>
+                      </SelectPrimitive.Portal>
+                    </SelectPrimitive.Root>
                     <VariableField
                       label="Request URL"
                       variables={resolvedVariables}
@@ -1750,10 +1782,15 @@ function App() {
                     )}
                   </div>
                 </div>
+                <div className="response-resize" role="separator" aria-label="Resize response area" aria-orientation={responseDock === "bottom" ? "horizontal" : "vertical"} aria-valuemin={25} aria-valuemax={75} aria-valuenow={Math.round(responseSizes[responseDock])} tabIndex={0}
+                  onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); } }}
+                  onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId) && event.buttons === 1) resizeResponse(event.clientX, event.clientY); }}
+                  onKeyDown={(event) => { const delta = event.key === "ArrowUp" || event.key === "ArrowLeft" ? -2 : event.key === "ArrowDown" || event.key === "ArrowRight" ? 2 : 0; if (delta) { event.preventDefault(); setResponseSizes((previous) => ({ ...previous, [responseDock]: Math.max(25, Math.min(75, previous[responseDock] + delta)) })); } }} />
                 <section className="response-panel">
                   <div className="response-top">
                     <div>
                       <strong>Response</strong>
+                      <button className="icon response-dock-button" aria-label={responseDock === "bottom" ? "Move response right" : "Move response below"} title={responseDock === "bottom" ? "Move response right" : "Move response below"} onClick={() => setResponseDock(responseDock === "bottom" ? "right" : "bottom")}>{responseDock === "bottom" ? <PanelRight size={15} /> : <PanelBottom size={15} />}</button>
                       {response && (
                         <>
                           <span
@@ -1790,7 +1827,9 @@ function App() {
                   </div>
                   {response && !response.binary && responseView === "body" && <div className="response-find">
                     <input aria-label="Find in response" placeholder="Find in response" value={responseSearch} onChange={(event) => setResponseSearch(event.target.value)} />
-                    <span>{responseSearch ? `${responseMatches} matches` : ""}</span>
+                    <span>{responseSearch ? `${responseMatches ? activeResponseMatch + 1 : 0} / ${responseMatches}` : ""}</span>
+                    <button className="icon" aria-label="Previous match" title="Previous match" disabled={!responseMatches} onClick={() => setActiveResponseMatch((index) => (index + responseMatches - 1) % responseMatches)}><ChevronUp size={15} /></button>
+                    <button className="icon" aria-label="Next match" title="Next match" disabled={!responseMatches} onClick={() => setActiveResponseMatch((index) => (index + 1) % responseMatches)}><ChevronDown size={15} /></button>
                     <button className="subtle small" onClick={() => { void navigator.clipboard.writeText(responseBody).then(() => toast.success("Response copied"), (err) => toast.error(message(err))); }}>Copy</button>
                   </div>}
                   {response && <div className="response-details">
@@ -1803,8 +1842,8 @@ function App() {
                   {error
                     ? (
                       <div className="response-error">
-                        <strong>Could not complete request</strong>
-                        <p>{error}</p>
+                        <strong>{error.split("\n", 1)[0]}</strong>
+                        <pre>{error.includes("\n") ? error.slice(error.indexOf("\n") + 1) : error}</pre>
                       </div>
                     )
                     : response
@@ -1841,13 +1880,13 @@ function App() {
                       )
                     : (
                       <div className="response-empty">
-                        <img src="/icon.svg" alt="" />
-                        <strong>Ready when you are</strong>
-                        <p>Send a request to inspect the response here.</p>
+                        <img className={busy ? "loading-icon" : ""} src="/icon.svg" alt="" />
+                        <strong>{busy ? "Sending request…" : "Ready when you are"}</strong>
+                        <p>{busy ? "Waiting for the server response." : "Send a request to inspect the response here."}</p>
                       </div>
                     )}
                 </section>
-              </>
+              </div>
             )
             : (
               <div className="welcome">
@@ -1879,12 +1918,17 @@ function App() {
           if (!target) return null;
           const requestId = contextMenu.requestId;
           const collectionId = contextMenu.collectionId;
+          const siblingRequests = target.collection.requests.filter((item) => item.folderId === target.request.folderId);
+          const siblingIndex = siblingRequests.findIndex((item) => item.id === requestId);
           return <>
             <div className="context-menu-label">{target.request.name}</div>
             <button role="menuitem" onClick={() => { setContextMenu(null); rename(target.request.name, (name) => editCollection(collectionId, (next) => { const found = next.requests.find((item) => item.id === requestId); if (found) found.name = name; })); }}>Rename</button>
             <button role="menuitem" onClick={() => { duplicateRequestById(requestId, collectionId); setContextMenu(null); }}>Duplicate</button>
             <button role="menuitem" onClick={() => { open(requestId); setContextMenu(null); }}>Open in tab</button>
             <button role="menuitem" onClick={() => { const curl = exportCurl(target.request); void navigator.clipboard.writeText(curl).then(() => toast.success("cURL copied")).catch(() => toast.error("Could not copy cURL")); setContextMenu(null); }}>Copy cURL</button>
+            <div className="context-menu-separator" />
+            <button role="menuitem" disabled={siblingIndex <= 0} onClick={() => { moveRequestById(requestId, collectionId, -1); setContextMenu(null); }}>Move up</button>
+            <button role="menuitem" disabled={siblingIndex >= siblingRequests.length - 1} onClick={() => { moveRequestById(requestId, collectionId, 1); setContextMenu(null); }}>Move down</button>
             <div className="context-menu-separator" />
             <button role="menuitem" className="danger" onClick={() => { removeRequestById(requestId, collectionId); setContextMenu(null); }}>Delete</button>
           </>;
@@ -1896,13 +1940,19 @@ function App() {
           <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "left"); setContextMenu(null); }}>Close other tabs to the left</button>
         </> : contextMenu.kind === "folder" ? (() => {
           const collectionId = contextMenu.collectionId;
-          const folder = store.collections.find((item) => item.id === collectionId)?.folders.find((item) => item.id === contextMenu.folderId);
+          const folders = store.collections.find((item) => item.id === collectionId)?.folders ?? [];
+          const folder = folders.find((item) => item.id === contextMenu.folderId);
           if (!folder) return null;
+          const siblings = folders.filter((item) => item.parentId === folder.parentId);
+          const siblingIndex = siblings.findIndex((item) => item.id === folder.id);
           return <>
             <div className="context-menu-label">Folder · {folder.name}</div>
             <button role="menuitem" onClick={() => { setContextMenu(null); rename(folder.name, (name) => editCollection(collectionId, (next) => { const target = next.folders.find((item) => item.id === folder.id); if (target) target.name = name; })); }}>Rename</button>
-            <button role="menuitem" onClick={() => { addRequest(collectionId, folder.id); setCollapsed((previous) => previous.filter((id) => id !== collectionId && id !== folder.id)); setContextMenu(null); }}>New request</button>
-            <button role="menuitem" onClick={() => { editCollection(collectionId, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id })); setCollapsed((previous) => previous.filter((id) => id !== collectionId && id !== folder.id)); setContextMenu(null); }}>New subfolder</button>
+            <button role="menuitem" onClick={() => { addRequest(collectionId, folder.id); expandNodes(collectionId, folder.id); setContextMenu(null); }}>New request</button>
+            <button role="menuitem" onClick={() => { editCollection(collectionId, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id })); expandNodes(collectionId, folder.id); setContextMenu(null); }}>New subfolder</button>
+            <div className="context-menu-separator" />
+            <button role="menuitem" disabled={siblingIndex <= 0} onClick={() => { moveFolderById(folder.id, collectionId, -1); setContextMenu(null); }}>Move up</button>
+            <button role="menuitem" disabled={siblingIndex >= siblings.length - 1} onClick={() => { moveFolderById(folder.id, collectionId, 1); setContextMenu(null); }}>Move down</button>
             <div className="context-menu-separator" />
             <button role="menuitem" className="danger" onClick={() => { deleteFolderById(collectionId, folder.id); setContextMenu(null); }}>Delete folder</button>
           </>;
@@ -1912,8 +1962,8 @@ function App() {
           return <>
             <div className="context-menu-label">Collection · {target.name}</div>
             <button role="menuitem" onClick={() => { setContextMenu(null); rename(target.name, (name) => editCollection(target.id, (next) => { next.name = name; })); }}>Rename</button>
-            <button role="menuitem" onClick={() => { addRequest(target.id); setContextMenu(null); }}>New request</button>
-            <button role="menuitem" onClick={() => { editCollection(target.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: null })); setContextMenu(null); }}>New folder</button>
+            <button role="menuitem" onClick={() => { addRequest(target.id); expandNodes(target.id); setContextMenu(null); }}>New request</button>
+            <button role="menuitem" onClick={() => { editCollection(target.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: null })); expandNodes(target.id); setContextMenu(null); }}>New folder</button>
             <button role="menuitem" onClick={() => { setConfigCollectionId(target.id); setConfigOpen(true); setContextMenu(null); }}>Configure source…</button>
             <div className="context-menu-separator" />
             <button role="menuitem" className="danger" onClick={() => { deleteCollectionById(target.id); setContextMenu(null); }}>Delete collection</button>
@@ -1988,6 +2038,13 @@ function App() {
               </div>
               <small>Used for new OpenAPI imports and linked source syncs.</small>
             </div>
+            <div className="settings-import-option">
+              <span>Imported URL protocol</span>
+              <div className="settings-theme-options" role="group" aria-label="Imported URL protocol">
+                {(["document", "http", "https"] as const).map((scheme) => <button key={scheme} className={openApiScheme === scheme ? "active" : ""} aria-pressed={openApiScheme === scheme} onClick={() => setOpenApiScheme(scheme)}>{scheme === "document" ? "From file" : scheme.toUpperCase()}</button>)}
+              </div>
+              <small>Changes imported URLs only. Locally edited routes remain unchanged during sync.</small>
+            </div>
             <p className="settings-section-description">Import requests into this workspace or export it as a Kodama file.</p>
             <div className="source-actions">
               <button className="subtle" onClick={() => { setConfigOpen(false); void importFile(); }}>Import workspace</button>
@@ -1996,7 +2053,7 @@ function App() {
               <button className="subtle" onClick={() => { setConfigOpen(false); void exportFile(); }}>Export workspace</button>
             </div>
           </div>
-          <div className="settings-collection-heading"><strong>Collection settings</strong><span>Link an OpenAPI JSON, JavaScript, or TypeScript file to keep routes synced.</span></div>
+          <div className="settings-collection-heading"><strong>Collection settings</strong><span>Link an OpenAPI JSON, YAML, JavaScript, or TypeScript file to keep routes synced.</span></div>
           {store.collections.length ? <>
             <label className="dialog-label" htmlFor="source-collection">Collection</label>
             <select id="source-collection" value={configCollectionId ?? ""} onChange={(event) => setConfigCollectionId(event.target.value)}>
@@ -2032,7 +2089,7 @@ function App() {
               </>}
             </>}
           </> : <div className="source-config-section">
-            <p className="settings-section-description">Choose an OpenAPI JSON, JavaScript, or TypeScript file to create a collection using its document title. Kodama will keep its routes synced to the file.</p>
+            <p className="settings-section-description">Choose an OpenAPI JSON, YAML, JavaScript, or TypeScript file to create a collection using its document title. Kodama will keep its routes synced to the file.</p>
             <div className="source-actions"><button className="subtle" onClick={() => void createCollectionFromSourceFileDialog()}>Create collection from file</button></div>
           </div>}
         </DialogContent>
