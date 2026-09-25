@@ -8,6 +8,7 @@ use reqwest::{
 };
 use std::{
     collections::HashMap,
+    error::Error,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -281,7 +282,21 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
     let response = builder
         .send()
         .await
-        .map_err(|e| format!("Request failed: {e}"))?;
+        .map_err(|e| {
+            let kind = if e.is_timeout() { "Request timed out" }
+                else if e.is_connect() { "Could not connect to server" }
+                else if e.is_redirect() { "Redirect failed" }
+                else if e.is_request() { "Invalid request" }
+                else if e.is_body() { "Could not send request body" }
+                else { "Request failed" };
+            let mut causes = Vec::new();
+            let mut source = e.source();
+            while let Some(cause) = source {
+                causes.push(cause.to_string());
+                source = cause.source();
+            }
+            format!("{kind}\nURL: {url_text}\nDetails: {e}{}", if causes.is_empty() { String::new() } else { format!("\nCause: {}", causes.join(" → ")) })
+        })?;
     let status = response.status();
     let response_url = response.url().to_string();
     let status_text = status.canonical_reason().unwrap_or("").to_string();
@@ -293,7 +308,7 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| format!("Could not read response: {e}"))?;
+        .map_err(|e| format!("Could not read response\nURL: {response_url}\nDetails: {e}"))?;
     let elapsed_ms = started.elapsed().as_millis();
     let size = bytes.len();
     let (body, binary) = match String::from_utf8(bytes.to_vec()) {
