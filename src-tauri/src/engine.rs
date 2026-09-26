@@ -75,10 +75,10 @@ fn resolve_path_params(
             let row = entries
                 .iter()
                 .find(|row| row.enabled && row.key == name)
-                .ok_or_else(|| format!("Missing path parameter: {name}"))?;
-            let value = interpolate(&row.value, variables, runtime)?;
+                .ok_or_else(|| format!("Path parameter :{name} is missing. Add and enable it in Params before sending."))?;
+            let value = interpolate_at(&row.value, variables, runtime, &format!("path parameter :{name}"))?;
             if value.is_empty() {
-                return Err(format!("Path parameter {name} needs a value"));
+                return Err(format!("Path parameter :{name} has no value. Set it in Params before sending."));
             }
             let mut encoder = Url::parse("https://kodama.invalid/").map_err(|e| e.to_string())?;
             encoder
@@ -125,7 +125,11 @@ fn interpolate(
             } else {
                 variables.get(key)
             };
-            output.push_str(value.ok_or_else(|| format!("Unresolved variable: {{{{{key}}}}}"))?);
+            let value = value.ok_or_else(|| format!("Variable {key} is not defined. Set it in Vars, the active environment, or the collection before sending."))?;
+            if value.trim().is_empty() {
+                return Err(format!("Variable {key} has no value. Set it in Vars, the active environment, or the collection before sending."));
+            }
+            output.push_str(value);
         }
         rest = &after[end + 2..];
     }
@@ -133,18 +137,23 @@ fn interpolate(
     Ok(output)
 }
 
+fn interpolate_at(input: &str, variables: &HashMap<String, String>, runtime: &HashMap<String, String>, field: &str) -> Result<String, String> {
+    interpolate(input, variables, runtime).map_err(|error| format!("{error}\nUsed in: {field}"))
+}
+
 fn resolve_entries(
     entries: &[Entry],
     vars: &HashMap<String, String>,
     runtime: &HashMap<String, String>,
+    field: &str,
 ) -> Result<Vec<(String, String)>, String> {
     entries
         .iter()
         .filter(|entry| entry.enabled && !entry.key.trim().is_empty())
         .map(|entry| {
             Ok((
-                interpolate(&entry.key, vars, runtime)?,
-                interpolate(&entry.value, vars, runtime)?,
+                interpolate_at(&entry.key, vars, runtime, field)?,
+                interpolate_at(&entry.value, vars, runtime, &format!("{field} {}", entry.key))?,
             ))
         })
         .collect()
@@ -209,7 +218,7 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         request = output.request;
     }
     let url_text = resolve_path_params(
-        &interpolate(&request.url, &variables, &runtime)?,
+        &interpolate_at(&request.url, &variables, &runtime, "request URL")?,
         &request.path_params,
         &variables,
         &runtime,
@@ -218,7 +227,7 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
     if url.scheme() != "http" && url.scheme() != "https" {
         return Err("Only HTTP and HTTPS URLs are supported".into());
     }
-    let query = resolve_entries(&request.query, &variables, &runtime)?;
+    let query = resolve_entries(&request.query, &variables, &runtime, "query parameter")?;
     append_query_pairs(&mut url, query)?;
     let method = Method::from_bytes(request.method.as_bytes())
         .map_err(|e| format!("Invalid HTTP method: {e}"))?;
@@ -230,7 +239,7 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         .build()
         .map_err(|e| e.to_string())?;
     let mut headers = HeaderMap::new();
-    for (key, value) in resolve_entries(&request.headers, &variables, &runtime)? {
+    for (key, value) in resolve_entries(&request.headers, &variables, &runtime, "header")? {
         let name = HeaderName::from_bytes(key.as_bytes())
             .map_err(|e| format!("Invalid header name: {e}"))?;
         let value =
@@ -241,18 +250,20 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
     match request.auth.kind.as_str() {
         "basic" => {
             builder = builder.basic_auth(
-                interpolate(&request.auth.username, &variables, &runtime)?,
-                Some(interpolate(&request.auth.password, &variables, &runtime)?),
+                interpolate_at(&request.auth.username, &variables, &runtime, "Basic auth username")?,
+                Some(interpolate_at(&request.auth.password, &variables, &runtime, "Basic auth password")?),
             )
         }
         "bearer" => {
-            builder = builder.bearer_auth(interpolate(&request.auth.token, &variables, &runtime)?)
+            let token = interpolate_at(&request.auth.token, &variables, &runtime, "Bearer token")?;
+            if token.trim().is_empty() { return Err("Bearer token is empty. Set a token in Auth or run the login request that fills its variable.".into()); }
+            builder = builder.bearer_auth(token)
         }
         _ => {}
     }
     match request.body.kind.as_str() {
         "json" => {
-            let body = interpolate(&request.body.text, &variables, &runtime)?;
+            let body = interpolate_at(&request.body.text, &variables, &runtime, "JSON body")?;
             if !body.trim().is_empty() {
                 serde_json::from_str::<serde_json::Value>(&body)
                     .map_err(|e| format!("Invalid JSON body: {e}"))?;
@@ -261,17 +272,18 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
                     .body(body);
             }
         }
-        "text" => builder = builder.body(interpolate(&request.body.text, &variables, &runtime)?),
+        "text" => builder = builder.body(interpolate_at(&request.body.text, &variables, &runtime, "text body")?),
         "form" => {
             builder = builder.form(&resolve_entries(
                 &request.body.fields,
                 &variables,
                 &runtime,
+                "form field",
             )?)
         }
         "multipart" => {
             let mut form = reqwest::multipart::Form::new();
-            for (key, value) in resolve_entries(&request.body.fields, &variables, &runtime)? {
+            for (key, value) in resolve_entries(&request.body.fields, &variables, &runtime, "multipart field")? {
                 form = form.text(key, value);
             }
             builder = builder.multipart(form);
@@ -386,6 +398,18 @@ mod tests {
             interpolate("Bearer {{_.TOKEN}}", &variables, &runtime).unwrap(),
             "Bearer fresh"
         );
+    }
+
+    #[test]
+    fn missing_and_empty_variables_identify_the_field() {
+        let runtime = HashMap::new();
+        let missing = interpolate_at("Bearer {{_.TOKEN}}", &HashMap::new(), &runtime, "Authorization header").unwrap_err();
+        assert!(missing.contains("Variable _.TOKEN is not defined"));
+        assert!(missing.contains("Authorization header"));
+        let variables = HashMap::from([("PORT".into(), String::new())]);
+        let empty = interpolate_at("http://localhost:{{PORT}}", &variables, &runtime, "request URL").unwrap_err();
+        assert!(empty.contains("has no value"));
+        assert!(empty.contains("request URL"));
     }
 
     #[test]
