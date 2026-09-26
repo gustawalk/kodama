@@ -28,7 +28,6 @@ class VariableChip extends WidgetType {
     const chip = document.createElement("span");
     chip.className = `code-variable-chip${this.value ? "" : " missing"}`;
     chip.textContent = this.name;
-    chip.title = this.value ? `${this.name}: ${this.value}` : `${this.name}: Unresolved variable`;
     chip.addEventListener("mousedown", (event) => {
       event.preventDefault();
       view.dispatch({ selection: { anchor: this.from + 2 } });

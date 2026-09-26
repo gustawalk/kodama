@@ -188,7 +188,7 @@ function VariableEditor(
   return (
     <div className="variables-editor">
       {rows.map((row) => (
-        <div className="variable-row" key={row.id}>
+        <div className={`variable-row${row.secret ? " is-secret" : ""}`} key={row.id}>
           <input
             aria-label="Variable name"
             value={row.name}
@@ -202,14 +202,18 @@ function VariableEditor(
             placeholder="Value"
             onChange={(event) => edit(row.id, "value", event.target.value)}
           />
-          <button className="icon" aria-label={shown.includes(row.id) ? "Hide variable value" : "Show variable value"} title={shown.includes(row.id) ? "Hide value" : "Show value"} onClick={() => setShown((previous) => previous.includes(row.id) ? previous.filter((id) => id !== row.id) : [...previous, row.id])}>{shown.includes(row.id) ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+          {row.secret && <button className="icon" aria-label={shown.includes(row.id) ? "Hide variable value" : "Show variable value"} title={shown.includes(row.id) ? "Hide value" : "Show value"} onClick={() => setShown((previous) => previous.includes(row.id) ? previous.filter((id) => id !== row.id) : [...previous, row.id])}>{shown.includes(row.id) ? <EyeOff size={15} /> : <Eye size={15} />}</button>}
           <label className="secret-toggle" title="Secret values stay hidden in variable editors">
             <input
               type="checkbox"
               role="switch"
               aria-label={`Secret variable ${row.name || "unnamed"}`}
               checked={row.secret}
-              onChange={(event) => edit(row.id, "secret", event.target.checked)}
+              onChange={(event) => {
+                const secret = event.target.checked;
+                edit(row.id, "secret", secret);
+                if (!secret) setShown((previous) => previous.filter((id) => id !== row.id));
+              }}
             />
             <span className="secret-toggle-track" aria-hidden="true"><span /></span>
             <span>Secret</span>
@@ -231,6 +235,14 @@ function VariableEditor(
       </button>
     </div>
   );
+}
+
+function responseSizeBounds(dock: "bottom" | "right", available: number): [number, number] {
+  if (dock === "bottom" && available > 0) {
+    const minRequestHeight = Math.min(460, available * 0.72);
+    return [Math.max(45, minRequestHeight / available * 100), 75];
+  }
+  return [25, 75];
 }
 
 function App() {
@@ -566,6 +578,11 @@ function App() {
         : response.body;
     }
   }, [response]);
+  const responseIsJson = useMemo(() => {
+    if (!response || response.binary) return false;
+    try { JSON.parse(response.body); return true; }
+    catch { return false; }
+  }, [response]);
   const responseContentType = response?.headers.find(([key]) => key.toLowerCase() === "content-type")?.[1] ?? "Unknown content type";
   const responseIsHtml = !!response && (/text\/html|application\/xhtml\+xml/i.test(responseContentType) || /^\s*(?:<!doctype\s+html|<html\b)/i.test(response.body));
   const responseMatches = responseSearch ? responseBody.toLowerCase().split(responseSearch.toLowerCase()).length - 1 : 0;
@@ -575,7 +592,32 @@ function App() {
     workbenchRef.current?.querySelectorAll(".response-body mark")[activeResponseMatch]?.scrollIntoView({ block: "nearest" });
   }, [activeResponseMatch, responseMatches, responseSearch, responseView]);
   const highlightedResponse = () => {
-    if (!responseSearch) return responseBody;
+    const tokens: { from: number; to: number; kind: string }[] = [];
+    if (responseIsJson) {
+      const pattern = /("(?:\\.|[^"\\])*")(?=\s*:)|("(?:\\.|[^"\\])*")|(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)|(\b(?:true|false|null)\b)/g;
+      for (const match of responseBody.matchAll(pattern)) {
+        const from = match.index ?? 0;
+        const kind = match[1] ? "key" : match[2] ? "string" : match[3] ? "number" : "literal";
+        tokens.push({ from, to: from + match[0].length, kind });
+      }
+    }
+    let rangeId = 0;
+    const renderRange = (start: number, end: number): React.ReactNode[] => {
+      const parts: React.ReactNode[] = [];
+      let cursor = start;
+      const currentRange = rangeId++;
+      tokens.forEach((token, index) => {
+        const from = Math.max(cursor, start, token.from);
+        const to = Math.min(end, token.to);
+        if (from >= to) return;
+        if (cursor < from) parts.push(responseBody.slice(cursor, from));
+        parts.push(<span key={`json-${currentRange}-${index}`} className={`response-json-${token.kind}`}>{responseBody.slice(from, to)}</span>);
+        cursor = to;
+      });
+      if (cursor < end) parts.push(responseBody.slice(cursor, end));
+      return parts;
+    };
+    if (!responseSearch) return renderRange(0, responseBody.length);
     const parts: React.ReactNode[] = [];
     const lower = responseBody.toLowerCase();
     const needle = responseSearch.toLowerCase();
@@ -583,9 +625,9 @@ function App() {
     let matchIndex = 0;
     while (index < responseBody.length) {
       const found = lower.indexOf(needle, index);
-      if (found < 0) { parts.push(responseBody.slice(index)); break; }
-      parts.push(responseBody.slice(index, found));
-      parts.push(<mark key={found} className={matchIndex === activeResponseMatch ? "active" : ""}>{responseBody.slice(found, found + needle.length)}</mark>);
+      if (found < 0) { parts.push(...renderRange(index, responseBody.length)); break; }
+      parts.push(...renderRange(index, found));
+      parts.push(<mark key={found} className={matchIndex === activeResponseMatch ? "active" : ""}>{renderRange(found, found + needle.length)}</mark>);
       matchIndex++;
       index = found + needle.length;
     }
@@ -833,8 +875,12 @@ function App() {
   const resizeResponse = (clientX: number, clientY: number) => {
     const rect = workbenchRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const percent = responseDock === "bottom" ? (clientY - rect.top) / rect.height * 100 : (clientX - rect.left) / rect.width * 100;
-    setResponseSizes((previous) => ({ ...previous, [responseDock]: Math.max(25, Math.min(75, percent)) }));
+    const dimension = responseDock === "bottom" ? rect.height : rect.width;
+    const origin = responseDock === "bottom" ? rect.top : rect.left;
+    const coordinate = responseDock === "bottom" ? clientY : clientX;
+    const [minimum, maximum] = responseSizeBounds(responseDock, dimension);
+    const percent = (coordinate - origin) / dimension * 100;
+    setResponseSizes((previous) => ({ ...previous, [responseDock]: Math.max(minimum, Math.min(maximum, percent)) }));
   };
 
   const showRequestMenu = (event: React.MouseEvent, requestId: string, collectionId: string) => {
@@ -1141,6 +1187,10 @@ function App() {
 
   const errorTitle = error.split("\n", 1)[0];
   const variableError = /^Variable ([A-Za-z_][\w.]*) (is not defined|has no value)(.*)$/.exec(errorTitle);
+  const workbenchRect = workbenchRef.current?.getBoundingClientRect();
+  const responseBounds = responseSizeBounds(responseDock, responseDock === "bottom"
+    ? workbenchRect?.height ?? window.innerHeight * 0.8
+    : workbenchRect?.width ?? window.innerWidth * 0.7);
 
   return (
     <TooltipProvider><div className="app">
@@ -1556,7 +1606,7 @@ function App() {
           </div>
           {request && collection
             ? (
-              <div ref={workbenchRef} className={`workbench dock-${responseDock}`} style={responseDock === "bottom" ? { gridTemplateRows: `${responseSizes.bottom}% 7px minmax(0, 1fr)` } : { gridTemplateColumns: `${responseSizes.right}% 7px minmax(0, 1fr)` }}>
+              <div ref={workbenchRef} className={`workbench dock-${responseDock}`} style={responseDock === "bottom" ? { gridTemplateRows: `${responseSizes.bottom}% 4px minmax(0, 1fr)` } : { gridTemplateColumns: `${responseSizes.right}% 4px minmax(0, 1fr)` }}>
                 <div className="request-area">
                   <div className="request-heading">
                     <div>
@@ -1783,7 +1833,7 @@ function App() {
                           <Suspense fallback={<div className="code-editor-loading">Loading editor…</div>}>
                           <CodeEditor
                             label="Request body"
-                            large={request.body.kind === "json"}
+                            large
                             variables={resolvedVariables}
                             theme={themes[theme].mode}
                             language={request.body.kind === "json" ? "json" : "text"}
@@ -1848,10 +1898,10 @@ function App() {
                     )}
                   </div>
                 </div>
-                <div className="response-resize" role="separator" aria-label="Resize response area" aria-orientation={responseDock === "bottom" ? "horizontal" : "vertical"} aria-valuemin={25} aria-valuemax={75} aria-valuenow={Math.round(responseSizes[responseDock])} tabIndex={0}
+                <div className="response-resize" role="separator" aria-label="Resize response area" aria-orientation={responseDock === "bottom" ? "horizontal" : "vertical"} aria-valuemin={Math.round(responseBounds[0])} aria-valuemax={Math.round(responseBounds[1])} aria-valuenow={Math.round(responseSizes[responseDock])} tabIndex={0}
                   onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); } }}
                   onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId) && event.buttons === 1) resizeResponse(event.clientX, event.clientY); }}
-                  onKeyDown={(event) => { const delta = event.key === "ArrowUp" || event.key === "ArrowLeft" ? -2 : event.key === "ArrowDown" || event.key === "ArrowRight" ? 2 : 0; if (delta) { event.preventDefault(); setResponseSizes((previous) => ({ ...previous, [responseDock]: Math.max(25, Math.min(75, previous[responseDock] + delta)) })); } }} />
+                  onKeyDown={(event) => { const delta = event.key === "ArrowUp" || event.key === "ArrowLeft" ? -2 : event.key === "ArrowDown" || event.key === "ArrowRight" ? 2 : 0; if (delta) { event.preventDefault(); setResponseSizes((previous) => ({ ...previous, [responseDock]: Math.max(responseBounds[0], Math.min(responseBounds[1], previous[responseDock] + delta)) })); } }} />
                 <section className="response-panel">
                   <div className="response-top">
                     <div>
@@ -2193,7 +2243,7 @@ function App() {
       <AlertDialog open={!!replaceSourceId} onOpenChange={(open) => { if (!open) setReplaceSourceId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Replace this collection?</AlertDialogTitle><AlertDialogDescription>All current requests, scripts, folders, and collection variables in {store.collections.find((item) => item.id === replaceSourceId)?.name ?? "this collection"} will be replaced from its source file. Other collections and environments stay intact.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel onClick={() => setConfigOpen(true)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { const id = replaceSourceId; setReplaceSourceId(null); setConfigOpen(true); if (id) void syncSourceNow(id, "replace"); }}>Replace collection</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogFooter><AlertDialogCancel onClick={() => setConfigOpen(true)}>Cancel</AlertDialogCancel><AlertDialogAction className="alert-dialog-destructive-action" onClick={() => { const id = replaceSourceId; setReplaceSourceId(null); setConfigOpen(true); if (id) void syncSourceNow(id, "replace"); }}>Replace collection</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       <Dialog open={!!headerVariable} onOpenChange={(open) => { if (!open) setHeaderVariable(null); }}>
@@ -2207,7 +2257,7 @@ function App() {
       <AlertDialog open={!!deleteDialog} onOpenChange={(open) => { if (!open) setDeleteDialog(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Delete {deleteDialog?.name}?</AlertDialogTitle><AlertDialogDescription>{deleteDialog?.description ?? "This removes it from your workspace."}</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { deleteDialog?.apply(); setDeleteDialog(null); }}>Delete</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="alert-dialog-destructive-action" onClick={() => { deleteDialog?.apply(); setDeleteDialog(null); }}>Delete</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div></TooltipProvider>
