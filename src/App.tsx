@@ -1,13 +1,14 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast, Toaster } from "sonner";
-import { Check, ChevronDown, ChevronRight, ChevronUp, Ellipsis, Eye, EyeOff, GripVertical, PanelBottom, PanelRight, Pencil, Settings2, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Ellipsis, Eye, EyeOff, Folder, FolderOpen, FolderPlus, GripVertical, PanelBottom, PanelRight, Pencil, Pin, Settings2, Trash2, X } from "lucide-react";
 import { Select as SelectPrimitive } from "radix-ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { VariableField, type ResolvedVariable } from "./VariableField";
+import { moveSiblingFolder, reorderSiblingFolder } from "./folderOrder";
 import { variableHasValue, variableInspectorEntries } from "./variableResolution";
 import { exportCurl, importCurl } from "./curl";
 import { importOpenApi, type OpenApiRequestNames, type OpenApiScheme } from "./openapi";
@@ -15,6 +16,7 @@ import { bundleOpenApiRefs } from "./openapiRefs";
 import { previewRequestUrl } from "./requestPreview";
 import { parseOpenApiSource, type SourceFile } from "./sourceParser";
 import { syncCollectionSource, type SyncSummary } from "./sourceSync";
+import { savedTheme, themeGroups, themes, type ThemeId } from "./themes";
 import type {
   ApiRequest,
   Collection,
@@ -34,6 +36,7 @@ import {
   variable,
 } from "./types";
 import "./App.css";
+import "./themes.css";
 
 type Panel = "params" | "headers" | "auth" | "body" | "pre" | "post";
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -42,6 +45,7 @@ type Sidebar = "requests" | "environments" | "variables" | "history";
 type PointerDrag =
   | { kind: "request"; requestId: string; collectionId: string }
   | { kind: "collection"; collectionId: string }
+  | { kind: "folder"; folderId: string; collectionId: string }
   | { kind: "tab"; requestId: string };
 type ContextMenuState =
   | { kind: "request"; x: number; y: number; requestId: string; collectionId: string }
@@ -244,6 +248,13 @@ function App() {
   const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tabs, setTabs] = useState<string[]>([]);
+  const [pinnedByWorkspace, setPinnedByWorkspace] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("kodama.pinnedByWorkspace") ?? "{}");
+      return Object.fromEntries(Object.entries(saved).filter(([, ids]) => Array.isArray(ids)).map(([id, ids]) => [id, (ids as unknown[]).filter((value): value is string => typeof value === "string")]));
+    } catch { return {}; }
+  });
+  const pinnedTabs = pinnedByWorkspace[workspaceData.activeWorkspaceId] ?? [];
   const [panel, setPanel] = useState<Panel>("params");
   const [sidebar, setSidebar] = useState<Sidebar>("requests");
   const [search, setSearch] = useState("");
@@ -259,9 +270,7 @@ function App() {
   >([]);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<Store | null>(null);
-  const [theme, setTheme] = useState<"dark" | "light">(() =>
-    localStorage.getItem("kodama.theme") === "light" ? "light" : "dark"
-  );
+  const [theme, setTheme] = useState<ThemeId>(() => savedTheme(localStorage.getItem("kodama.theme")));
   const [openApiRequestNames, setOpenApiRequestNames] = useState<OpenApiRequestNames>(() =>
     localStorage.getItem("kodama.openApiRequestNames") === "path" ? "path" : "summary"
   );
@@ -311,15 +320,18 @@ function App() {
       : 280;
   });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [requestDropAfter, setRequestDropAfter] = useState(false);
   const [collectionDropTarget, setCollectionDropTarget] = useState<{ id: string; position: "before" | "after" } | null>(null);
+  const [folderDropTarget, setFolderDropTarget] = useState<{ id: string; position: "before" | "after" } | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [tabDropTarget, setTabDropTarget] = useState<{ id: string; after: boolean } | null>(null);
   const pointerDragRef = useRef<{ payload: PointerDrag; x: number; y: number; active: boolean } | null>(null);
   const suppressNextClickRef = useRef(false);
   const [headerVariable, setHeaderVariable] = useState<{ name: string; value: string } | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<"appearance" | "imports" | "collection">("appearance");
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
@@ -327,6 +339,8 @@ function App() {
   const [configCollectionId, setConfigCollectionId] = useState<string | null>(null);
   const [replaceSourceId, setReplaceSourceId] = useState<string | null>(null);
   const [sourceStatus, setSourceStatus] = useState<Record<string, { busy: boolean; message: string; error: boolean }>>({});
+  const [sourceWarnings, setSourceWarnings] = useState<Record<string, { path: string; message: string }[]>>({});
+  const [importWarnings, setImportWarnings] = useState<{ path: string; message: string }[]>([]);
   const sourceCollectionsRef = useRef<Collection[]>([]);
   const syncingSourcesRef = useRef(new Set<string>());
   const pollingSourcesRef = useRef(false);
@@ -335,13 +349,18 @@ function App() {
   const saveRevisionRef = useRef(0);
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.dataset.kodamaTheme = theme;
+    document.documentElement.classList.toggle("dark", themes[theme].mode === "dark");
     localStorage.setItem("kodama.theme", theme);
-    return () => document.documentElement.classList.remove("dark");
+    return () => {
+      delete document.documentElement.dataset.kodamaTheme;
+      document.documentElement.classList.remove("dark");
+    };
   }, [theme]);
   useEffect(() => { localStorage.setItem("kodama.openApiRequestNames", openApiRequestNames); }, [openApiRequestNames]);
   useEffect(() => { localStorage.setItem("kodama.openApiScheme", openApiScheme); }, [openApiScheme]);
   useEffect(() => { localStorage.setItem("kodama.collapsedByWorkspace", JSON.stringify(collapsedByWorkspace)); }, [collapsedByWorkspace]);
+  useEffect(() => { localStorage.setItem("kodama.pinnedByWorkspace", JSON.stringify(pinnedByWorkspace)); }, [pinnedByWorkspace]);
   useEffect(() => { localStorage.setItem("kodama.responseDock", responseDock); }, [responseDock]);
   useEffect(() => { localStorage.setItem("kodama.responseSizes", JSON.stringify(responseSizes)); }, [responseSizes]);
 
@@ -352,9 +371,11 @@ function App() {
       activeWorkspaceRef.current = next.activeWorkspaceId;
       setWorkspaceData(next);
       const active = next.workspaces.find((item) => item.id === next.activeWorkspaceId) ?? next.workspaces[0];
-      const id = active.store.collections[0]?.requests[0]?.id ?? null;
+      const known = new Set(active.store.collections.flatMap((item) => item.requests.map((request) => request.id)));
+      const restoredPins = (pinnedByWorkspace[next.activeWorkspaceId] ?? []).filter((id) => known.has(id));
+      const id = restoredPins[0] ?? active.store.collections[0]?.requests[0]?.id ?? null;
       setSelectedId(id);
-      setTabs(id ? [id] : []);
+      setTabs(restoredPins.length ? restoredPins : id ? [id] : []);
       setReady(true);
     }).catch((err) => {
       setLoadError(`Could not load workspace: ${message(err)}`);
@@ -362,6 +383,19 @@ function App() {
       toast.error(`Could not load workspace: ${message(err)}`);
     });
   }, []);
+  useEffect(() => {
+    if (!ready) return;
+    setPinnedByWorkspace((previous) => {
+      let changed = false;
+      const next = { ...previous };
+      for (const workspace of workspaceData.workspaces) {
+        const ids = new Set(workspace.store.collections.flatMap((item) => item.requests.map((request) => request.id)));
+        const valid = (previous[workspace.id] ?? []).filter((id) => ids.has(id));
+        if (valid.length !== (previous[workspace.id] ?? []).length) { next[workspace.id] = valid; changed = true; }
+      }
+      return changed ? next : previous;
+    });
+  }, [workspaceData, ready]);
   useEffect(() => {
     localStorage.setItem("kodama.sidebarWidth", String(sidebarWidth));
   }, [sidebarWidth]);
@@ -377,6 +411,17 @@ function App() {
       document.removeEventListener("pointerdown", close);
       window.removeEventListener("keydown", onKeyDown);
     };
+  }, [contextMenu]);
+  useLayoutEffect(() => {
+    const menu = contextMenuRef.current;
+    if (!contextMenu || !menu) return;
+    const { width, height } = menu.getBoundingClientRect();
+    const margin = 8;
+    const top = contextMenu.y + height > window.innerHeight - margin
+      ? contextMenu.y - height
+      : contextMenu.y;
+    menu.style.left = `${Math.max(margin, Math.min(contextMenu.x, window.innerWidth - width - margin))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(top, window.innerHeight - height - margin))}px`;
   }, [contextMenu]);
   const persistWorkspaces = (data: WorkspaceData, revision: number) => {
     saveQueueRef.current = saveQueueRef.current.catch(() => {}).then(async () => {
@@ -407,8 +452,9 @@ function App() {
           const source = item.source;
           if (!source?.path || syncingSourcesRef.current.has(item.id)) continue;
           try {
-            const stamps = await Promise.all([source.path, ...(source.dependencies ?? []).map((item) => item.path)].map((path) => invoke<string>("source_file_stamp", { path })));
-            const changed = stamps[0] !== source.stamp || (source.dependencies ?? []).some((item, index) => stamps[index + 1] !== item.stamp);
+            const paths = [source.path, ...(source.dependencies ?? []).map((item) => item.path)];
+            const stamps = await invoke<(string | null)[]>("source_file_stamps", { paths });
+            const changed = stamps[0] !== source.stamp || (source.dependencies ?? []).some((item, index) => (stamps[index + 1] ?? "missing") !== item.stamp);
             if (changed && !stopped) {
               const file = await invoke<SourceFile>("read_source_file", { path: source.path });
               if (!stopped) await applySourceFile(item.id, file, "merge", false);
@@ -595,15 +641,10 @@ function App() {
     });
   };
   const moveFolderById = (folderId: string, collectionId: string, direction: -1 | 1) => {
-    editCollection(collectionId, (next) => {
-      const index = next.folders.findIndex((item) => item.id === folderId);
-      if (index < 0) return;
-      const siblingIndices = next.folders.flatMap((item, position) => item.parentId === next.folders[index].parentId ? [position] : []);
-      const siblingIndex = siblingIndices.indexOf(index);
-      const other = siblingIndices[siblingIndex + direction];
-      if (other === undefined) return;
-      [next.folders[index], next.folders[other]] = [next.folders[other], next.folders[index]];
-    });
+    editCollection(collectionId, (next) => { next.folders = moveSiblingFolder(next.folders, folderId, direction); });
+  };
+  const moveFolderTo = (folderId: string, collectionId: string, targetId: string, after: boolean) => {
+    editCollection(collectionId, (next) => { next.folders = reorderSiblingFolder(next.folders, folderId, targetId, after); });
   };
 
   const moveRequestTo = (
@@ -666,9 +707,15 @@ function App() {
       } else if (payload.kind === "collection") {
         const rect = target?.getBoundingClientRect();
         setCollectionDropTarget(targetType === "collection" && target && target.dataset.collectionId !== payload.collectionId && rect ? { id: target.dataset.collectionId ?? "", position: y < rect.top + rect.height / 2 ? "before" : "after" } : null);
+      } else if (payload.kind === "folder") {
+        const folder = store.collections.find((item) => item.id === payload.collectionId)?.folders.find((item) => item.id === payload.folderId);
+        const other = store.collections.find((item) => item.id === payload.collectionId)?.folders.find((item) => item.id === target?.dataset.folderId);
+        const rect = target?.getBoundingClientRect();
+        setFolderDropTarget(targetType === "folder" && target?.dataset.collectionId === payload.collectionId && folder && other && folder.id !== other.id && folder.parentId === other.parentId && rect
+          ? { id: other.id, position: y < rect.top + rect.height / 2 ? "before" : "after" } : null);
       } else {
         const rect = target?.getBoundingClientRect();
-        setTabDropTarget(targetType === "tab" && target && target.dataset.requestId !== payload.requestId && rect ? { id: target.dataset.requestId ?? "", after: x > rect.left + rect.width / 2 } : null);
+        setTabDropTarget(targetType === "tab" && target && target.dataset.requestId !== payload.requestId && pinnedTabs.includes(payload.requestId) === pinnedTabs.includes(target.dataset.requestId ?? "") && rect ? { id: target.dataset.requestId ?? "", after: x > rect.left + rect.width / 2 } : null);
       }
     };
     const scrollTimer = window.setInterval(() => {
@@ -706,7 +753,9 @@ function App() {
           if (target?.dataset.dropType === "request") moveRequestTo(payload, target.dataset.collectionId ?? "", target.dataset.folderId || null, target.dataset.requestId, !!rect && y >= rect.top + rect.height / 2);
           else if (target?.dataset.dropType === "folder" || target?.dataset.dropType === "collection") moveRequestTo(payload, target.dataset.collectionId ?? "", target.dataset.folderId || null);
         } else if (payload.kind === "collection" && target?.dataset.dropType === "collection") moveCollectionTo(payload.collectionId, target.dataset.collectionId ?? "", !!rect && y >= rect.top + rect.height / 2 ? "after" : "before");
-        else if (payload.kind === "tab" && target?.dataset.dropType === "tab" && target.dataset.requestId !== payload.requestId) {
+        else if (payload.kind === "folder" && target?.dataset.dropType === "folder" && target.dataset.collectionId === payload.collectionId)
+          moveFolderTo(payload.folderId, payload.collectionId, target.dataset.folderId ?? "", !!rect && y >= rect.top + rect.height / 2);
+        else if (payload.kind === "tab" && target?.dataset.dropType === "tab" && target.dataset.requestId !== payload.requestId && pinnedTabs.includes(payload.requestId) === pinnedTabs.includes(target.dataset.requestId ?? "")) {
           const from = tabs.indexOf(payload.requestId);
           const to = tabs.indexOf(target.dataset.requestId ?? "");
           if (from >= 0 && to >= 0) setTabs((previous) => { const result = [...previous]; const [moving] = result.splice(from, 1); result.splice(to + (!!rect && x > rect.left + rect.width / 2 ? 1 : 0) - (from < to ? 1 : 0), 0, moving); return result; });
@@ -714,7 +763,7 @@ function App() {
       }
       pointerDragRef.current = null;
       document.body.classList.remove("pointer-dragging");
-      setDragOverId(null); setCollectionDropTarget(null); setTabDropTarget(null); setDraggingTabId(null); setRequestDropAfter(false);
+      setDragOverId(null); setCollectionDropTarget(null); setFolderDropTarget(null); setTabDropTarget(null); setDraggingTabId(null); setRequestDropAfter(false);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish, { once: true });
@@ -751,14 +800,29 @@ function App() {
     const index = tabs.indexOf(requestId);
     const remaining = tabs.filter((id) => id !== requestId);
     setTabs(remaining);
+    if (pinnedTabs.includes(requestId)) setPinnedByWorkspace((previous) => ({ ...previous, [workspaceData.activeWorkspaceId]: (previous[workspaceData.activeWorkspaceId] ?? []).filter((id) => id !== requestId) }));
     if (selectedId === requestId) setSelectedId(remaining[Math.max(0, index - 1)] ?? null);
+  };
+
+  const togglePinTab = (requestId: string) => {
+    const pinned = pinnedTabs.includes(requestId);
+    setPinnedByWorkspace((previous) => ({ ...previous, [workspaceData.activeWorkspaceId]: pinned
+      ? (previous[workspaceData.activeWorkspaceId] ?? []).filter((id) => id !== requestId)
+      : [...(previous[workspaceData.activeWorkspaceId] ?? []), requestId] }));
+    setTabs((previous) => {
+      const remaining = previous.filter((id) => id !== requestId);
+      if (pinned) return [...remaining.filter((id) => pinnedTabs.includes(id)), ...remaining.filter((id) => !pinnedTabs.includes(id)), requestId];
+      const lastPinned = remaining.reduce((last, id, index) => pinnedTabs.includes(id) ? index : last, -1);
+      remaining.splice(lastPinned + 1, 0, requestId);
+      return remaining;
+    });
   };
 
   const closeTabsByRelation = (requestId: string, relation: "others" | "right" | "left") => {
     const index = tabs.indexOf(requestId);
-    const remaining = tabs.filter((id, tabIndex) => relation === "others"
+    const remaining = tabs.filter((id, tabIndex) => pinnedTabs.includes(id) || (relation === "others"
       ? id === requestId
-      : relation === "right" ? tabIndex <= index : tabIndex >= index);
+      : relation === "right" ? tabIndex <= index : tabIndex >= index));
     setTabs(remaining);
     if (!remaining.includes(selectedId ?? "")) setSelectedId(requestId);
   };
@@ -775,33 +839,22 @@ function App() {
 
   const showRequestMenu = (event: React.MouseEvent, requestId: string, collectionId: string) => {
     event.preventDefault();
-    setContextMenu({
-      kind: "request",
-      requestId,
-      collectionId,
-      x: Math.min(event.clientX, window.innerWidth - 230),
-      y: Math.min(event.clientY, window.innerHeight - 290),
-    });
+    setContextMenu({ kind: "request", requestId, collectionId, x: event.clientX, y: event.clientY });
   };
 
   const showTabMenu = (event: React.MouseEvent, requestId: string) => {
     event.preventDefault();
-    setContextMenu({
-      kind: "tab",
-      requestId,
-      x: Math.min(event.clientX, window.innerWidth - 220),
-      y: Math.min(event.clientY, window.innerHeight - 170),
-    });
+    setContextMenu({ kind: "tab", requestId, x: event.clientX, y: event.clientY });
   };
 
   const showCollectionMenu = (event: React.MouseEvent, collectionId: string) => {
     event.preventDefault();
-    setContextMenu({ kind: "collection", collectionId, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 230)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
+    setContextMenu({ kind: "collection", collectionId, x: event.clientX, y: event.clientY });
   };
 
   const showFolderMenu = (event: React.MouseEvent, collectionId: string, folderId: string) => {
     event.preventDefault();
-    setContextMenu({ kind: "folder", collectionId, folderId, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 230)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 220)) });
+    setContextMenu({ kind: "folder", collectionId, folderId, x: event.clientX, y: event.clientY });
   };
 
   const deleteCollectionById = (collectionId: string) => {
@@ -847,9 +900,6 @@ function App() {
     setResponse(null);
     const startedAt = performance.now();
     try {
-      const sourceFields = [request.url, request.body.text, ...request.query.flatMap((row) => [row.key, row.value]), ...request.pathParams.map((row) => row.value), ...request.headers.flatMap((row) => [row.key, row.value])];
-      const unset = request.preScript.trim() ? [] : collection.source?.placeholders.filter((name) => sourceFields.some((field) => field.includes(`{{${name}}}`)) && !resolvedVariables[name]?.value) ?? [];
-      if (unset.length) throw new Error(`Set source variable${unset.length === 1 ? "" : "s"} ${unset.join(", ")} in Collection settings before sending`);
       const result = await invoke<RunResult>("send_request", {
         input: {
           request,
@@ -911,26 +961,32 @@ function App() {
     try {
       const file = await invoke<SourceFile | null>("import_openapi_file");
       if (!file) return;
-      const parsed = await parseOpenApiSource(file);
-      const bundled = await bundleOpenApiRefs(file, parsed.document, (path) => invoke<SourceFile>("read_source_file", { path }));
-      const imported = importOpenApi(bundled.document, openApiRequestNames, openApiScheme);
+      const read = (path: string) => invoke<SourceFile>("read_source_file", { path });
+      const parsed = await parseOpenApiSource(file, read);
+      const bundled = await bundleOpenApiRefs(file, parsed.document, read);
+      const warnings = [...bundled.warnings];
+      const imported = importOpenApi(bundled.document, openApiRequestNames, openApiScheme, (warning) => warnings.push(warning));
       setStore((previous) => ({ ...previous, collections: [...previous.collections, ...imported.collections] }));
       const first = imported.collections[0].requests[0];
       if (first) open(first.id);
       toast.success(`Imported ${imported.collections[0].requests.length} requests from OpenAPI`);
+      if (warnings.length) setImportWarnings(warnings);
     } catch (err) { toast.error(`Could not import OpenAPI: ${message(err)}`); }
   }
   async function prepareSourceFile(file: SourceFile) {
-    const parsed = await parseOpenApiSource(file);
-    const bundled = await bundleOpenApiRefs(file, parsed.document, (path) => invoke<SourceFile>("read_source_file", { path }));
-    const imported = importOpenApi(bundled.document, openApiRequestNames, openApiScheme).collections[0];
+    const read = (path: string) => invoke<SourceFile>("read_source_file", { path });
+    const parsed = await parseOpenApiSource(file, read);
+    const bundled = await bundleOpenApiRefs(file, parsed.document, read);
+    const warnings = [...bundled.warnings];
+    const imported = importOpenApi(bundled.document, openApiRequestNames, openApiScheme, (warning) => warnings.push(warning)).collections[0];
     const used = new Set(imported.requests.flatMap((item) => [item.url, item.body.text, ...item.query.flatMap((row) => [row.key, row.value]), ...item.pathParams.map((row) => row.value), ...item.headers.flatMap((row) => [row.key, row.value])]
       .flatMap((text) => [...text.matchAll(/\{\{\s*([A-Za-z_][\w]*)\s*\}\}/g)].map((match) => match[1]))));
     const placeholders = parsed.placeholders.filter((name) => used.has(name));
     for (const name of placeholders) {
       if (!imported.variables.some((item) => item.name === name)) imported.variables.push({ ...variable(), name });
     }
-    return { imported, details: { path: file.path, stamp: file.stamp, dependencies: bundled.dependencies, placeholders } };
+    const dependencies = [...new Map([...parsed.dependencies, ...bundled.dependencies].map((item) => [item.path, item])).values()];
+    return { imported, details: { path: file.path, stamp: file.stamp, dependencies, placeholders }, warnings };
   }
   async function applySourceFile(collectionId: string, file: SourceFile, mode: "merge" | "replace", announce: boolean) {
     const targetWorkspaceId = workspaceData.activeWorkspaceId;
@@ -938,7 +994,7 @@ function App() {
     syncingSourcesRef.current.add(collectionId);
     setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: true, message: "Reading source…", error: false } }));
     try {
-      const { imported, details } = await prepareSourceFile(file);
+      const { imported, details, warnings } = await prepareSourceFile(file);
       if (activeWorkspaceRef.current !== targetWorkspaceId) return;
       const current = sourceCollectionsRef.current.find((item) => item.id === collectionId);
       if (!current) throw new Error("Collection no longer exists");
@@ -957,7 +1013,8 @@ function App() {
       const result = mode === "replace"
         ? `Replaced with ${preview.collection.requests.length} source routes`
         : `Synced: ${summary.added} added, ${summary.updated} updated, ${summary.preserved} locally edited`;
-      setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: false, message: result, error: false } }));
+      setSourceWarnings((previous) => ({ ...previous, [collectionId]: warnings }));
+      setSourceStatus((previous) => ({ ...previous, [collectionId]: { busy: false, message: warnings.length ? `${result}; ${warnings.length} source warnings` : result, error: warnings.length > 0 } }));
       if (announce) toast.success(result);
     } catch (err) {
       const detail = message(err);
@@ -967,11 +1024,13 @@ function App() {
   }
   async function createCollectionFromSourceFile(file: SourceFile) {
     const targetWorkspaceId = workspaceData.activeWorkspaceId;
-    const { imported, details } = await prepareSourceFile(file);
+    const { imported, details, warnings } = await prepareSourceFile(file);
     if (activeWorkspaceRef.current !== targetWorkspaceId) return;
     const linked = syncCollectionSource(imported, imported, details, "merge").collection;
     setStore((previous) => ({ ...previous, collections: [...previous.collections, linked] }));
     setConfigCollectionId(linked.id);
+    setSourceWarnings((previous) => ({ ...previous, [linked.id]: warnings }));
+    if (warnings.length) setSourceStatus((previous) => ({ ...previous, [linked.id]: { busy: false, message: `Imported ${linked.requests.length} routes with ${warnings.length} source warnings`, error: true } }));
     if (linked.requests[0]) open(linked.requests[0].id);
     toast.success(`Created ${linked.name} with ${linked.requests.length} source routes`);
   }
@@ -1016,9 +1075,11 @@ function App() {
     setIncoming(null);
   }
   function resetWorkspaceSession(next: Store) {
-    const firstId = next.collections[0]?.requests[0]?.id ?? null;
+    const known = new Set(next.collections.flatMap((item) => item.requests.map((request) => request.id)));
+    const restoredPins = (pinnedByWorkspace[activeWorkspaceRef.current] ?? []).filter((id) => known.has(id));
+    const firstId = restoredPins[0] ?? next.collections[0]?.requests[0]?.id ?? null;
     setSelectedId(firstId);
-    setTabs(firstId ? [firstId] : []);
+    setTabs(restoredPins.length ? restoredPins : firstId ? [firstId] : []);
     setRuntime({});
     setResponse(null);
     setHistory([]);
@@ -1071,15 +1132,19 @@ function App() {
     if (wasActive) activeWorkspaceRef.current = remaining[0].id;
     setWorkspaceData((previous) => ({ ...previous, workspaces: previous.workspaces.filter((item) => item.id !== id), activeWorkspaceId: wasActive ? remaining[0].id : previous.activeWorkspaceId }));
     setCollapsedByWorkspace((previous) => { const next = { ...previous }; delete next[id]; return next; });
+    setPinnedByWorkspace((previous) => { const next = { ...previous }; delete next[id]; return next; });
     if (wasActive) resetWorkspaceSession(remaining[0].store);
     setWorkspaceDialogOpen(true);
   }
 
-  if (loadError) return <div className={`app kodama-${theme}`}><div className="load-failure"><img className="brand-icon brand-logo" src="/icon.svg" alt="" /><h1>Workspace unavailable</h1><p>{loadError}</p><button className="send" onClick={() => window.location.reload()}>Retry loading</button></div></div>;
+  if (loadError) return <div className="app"><div className="load-failure"><img className="brand-icon brand-logo" src="/icon.svg" alt="" /><h1>Workspace unavailable</h1><p>{loadError}</p><button className="send" onClick={() => window.location.reload()}>Retry loading</button></div></div>;
+
+  const errorTitle = error.split("\n", 1)[0];
+  const variableError = /^Variable ([A-Za-z_][\w.]*) (is not defined|has no value)(.*)$/.exec(errorTitle);
 
   return (
-    <TooltipProvider><div className={`app kodama-${theme}`}>
-      <Toaster theme={theme} position="bottom-right" richColors />
+    <TooltipProvider><div className="app">
+      <Toaster theme={themes[theme].mode} position="bottom-right" richColors />
       <header className="topbar">
         <div className="brand">
           <img className="brand-icon brand-logo" src="/icon.svg" alt="" />
@@ -1127,13 +1192,16 @@ function App() {
                   ＋
                 </button>
               </div>
-              <input
-                className="search"
-                aria-label="Search requests"
-                placeholder="Search requests…"
-                value={search}
-                onChange={(event) => { setSearch(event.target.value); setSearchCollapsed([]); }}
-              />
+              <div className="search-wrap">
+                <input
+                  className="search"
+                  aria-label="Search requests"
+                  placeholder="Search requests…"
+                  value={search}
+                  onChange={(event) => { setSearch(event.target.value); setSearchCollapsed([]); }}
+                />
+                {search && <button aria-label="Clear request search" title="Clear search" onClick={() => { setSearch(""); setSearchCollapsed([]); }}><X size={14} /></button>}
+              </div>
               {visibleCollections.map(({ item, requests }) => {
                 const folderHasMatches = (folderId: string): boolean => requests.some((value) => value.folderId === folderId) || item.folders.some((child) => child.parentId === folderId && folderHasMatches(child.id));
                 const requestRow = (value: ApiRequest, depth = 0) => (
@@ -1155,7 +1223,7 @@ function App() {
                   if (search && !folderHasMatches(folder.id)) return null;
                   const targetId = `folder:${item.id}:${folder.id}`;
                   const isCollapsed = isNodeCollapsed(folder.id);
-                  return <div className={`folder-node${depth ? " child-folder" : ""}`} key={folder.id}>
+                  return <div className={`folder-node${depth ? " child-folder" : ""}${folderDropTarget?.id === folder.id ? ` folder-drop-${folderDropTarget.position}` : ""}`} key={folder.id}>
                     <div
                       data-drop-type="folder" data-collection-id={item.id} data-folder-id={folder.id}
                       className={`folder-heading${dragOverId === targetId ? " drop-target" : ""}`}
@@ -1163,16 +1231,13 @@ function App() {
                     >
                       <button
                         aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${folder.name}`}
+                        onPointerDown={(event) => beginPointerDrag(event, { kind: "folder", folderId: folder.id, collectionId: item.id })}
                         onClick={() => toggleNode(folder.id)}
-                        onDoubleClick={() => rename(folder.name, (name) => editCollection(item.id, (next) => {
-                          const found = next.folders.find((value) => value.id === folder.id);
-                          if (found) found.name = name;
-                        }))}
                       >
-                        {isCollapsed ? "▸" : "▾"} {folder.name}
+                        {isCollapsed ? <Folder size={14} aria-hidden="true" /> : <FolderOpen size={14} aria-hidden="true" />} {folder.name}
                       </button>
                       <button className="icon" title="New request in folder" onClick={() => { addRequest(item.id, folder.id); expandNodes(item.id, folder.id); }}>＋</button>
-                      <button className="icon" title="New subfolder" onClick={() => { editCollection(item.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id })); expandNodes(item.id, folder.id); }}>▣</button>
+                      <button className="icon" title="New subfolder" aria-label={`New subfolder in ${folder.name}`} onClick={() => { editCollection(item.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: folder.id })); expandNodes(item.id, folder.id); }}><FolderPlus size={14} /></button>
                       <button className="icon" aria-label={`Actions for folder ${folder.name}`} title="Folder actions" onClick={(event) => showFolderMenu(event, item.id, folder.id)}><Ellipsis size={14} /></button>
                     </div>
                     {!isCollapsed && <>
@@ -1221,7 +1286,7 @@ function App() {
                         expandNodes(item.id);
                       }}
                     >
-                      ▣
+                      <FolderPlus size={14} />
                     </button>
                   </div>
                   {!isNodeCollapsed(item.id) && (
@@ -1454,13 +1519,14 @@ function App() {
                 <button
                   key={id}
                   data-drop-type="tab" data-request-id={id}
-                  className={`tab${selectedId === id ? " active" : ""}${draggingTabId === id ? " dragging" : ""}${tabDropTarget?.id === id && draggingTabId !== id ? (tabDropTarget.after ? " drop-after" : " drop-before") : ""}`}
+                  className={`tab${selectedId === id ? " active" : ""}${pinnedTabs.includes(id) ? " pinned" : ""}${draggingTabId === id ? " dragging" : ""}${tabDropTarget?.id === id && draggingTabId !== id ? (tabDropTarget.after ? " drop-after" : " drop-before") : ""}`}
                   title="Drag to reorder tabs"
                   onClick={() => open(id)}
                   onPointerDown={(event) => beginPointerDrag(event, { kind: "tab", requestId: id })}
                   onContextMenu={(event) => showTabMenu(event, id)}
                 >
                   <GripVertical className="tab-grip" size={14} aria-hidden="true" />
+                  {pinnedTabs.includes(id) && <Pin size={12} className="tab-pin" aria-hidden="true" />}
                   <span className={`method ${item.method.toLowerCase()}`}>
                     {item.method}
                   </span>
@@ -1468,26 +1534,25 @@ function App() {
                   {!saved && selectedId === id && (
                     <span className="unsaved-dot">•</span>
                   )}
-                  <span
-                    className="tab-close"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setTabs((previous) =>
-                        previous.filter((value) => value !== id)
-                      );
-                      if (selectedId === id) setSelectedId(null);
-                    }}
-                  >
+                  <span className="tab-close" onClick={(event) => { event.stopPropagation(); closeTab(id); }}>
                     ×
                   </span>
                 </button>
               );
             })}
             <div className="tab-fill"></div>
-            <div className="active-env">
-              <span className={`environment-dot ${environment ? "active" : ""}`} aria-hidden="true" />
-              <strong>{environment?.name ?? "No environment"}</strong>
-            </div>
+            <SelectPrimitive.Root value={store.activeEnvironmentId ?? "__none__"} onValueChange={(id) => editStore((next) => { next.activeEnvironmentId = id === "__none__" ? null : id; })}>
+              <SelectPrimitive.Trigger className="active-env" aria-label="Switch environment">
+                <span className={`environment-dot ${environment ? "active" : ""}`} aria-hidden="true" />
+                <strong>{environment?.name ?? "No environment"}</strong><ChevronDown size={12} aria-hidden="true" />
+              </SelectPrimitive.Trigger>
+              <SelectPrimitive.Portal><SelectPrimitive.Content className="environment-menu" position="popper" sideOffset={5} align="end">
+                <SelectPrimitive.Viewport>
+                  <SelectPrimitive.Item className="environment-menu-item" value="__none__"><SelectPrimitive.ItemText>No environment</SelectPrimitive.ItemText><SelectPrimitive.ItemIndicator><Check size={13} /></SelectPrimitive.ItemIndicator></SelectPrimitive.Item>
+                  {store.environments.map((item) => <SelectPrimitive.Item key={item.id} className="environment-menu-item" value={item.id}><SelectPrimitive.ItemText>{item.name}</SelectPrimitive.ItemText><SelectPrimitive.ItemIndicator><Check size={13} /></SelectPrimitive.ItemIndicator></SelectPrimitive.Item>)}
+                </SelectPrimitive.Viewport>
+              </SelectPrimitive.Content></SelectPrimitive.Portal>
+            </SelectPrimitive.Root>
           </div>
           {request && collection
             ? (
@@ -1524,7 +1589,7 @@ function App() {
                         <SelectPrimitive.Icon className="method-chevron"><ChevronDown size={14} /></SelectPrimitive.Icon>
                       </SelectPrimitive.Trigger>
                       <SelectPrimitive.Portal>
-                        <SelectPrimitive.Content className={`method-menu kodama-${theme}`} position="popper" sideOffset={6} align="start">
+                        <SelectPrimitive.Content className="method-menu" position="popper" sideOffset={6} align="start">
                           <SelectPrimitive.Viewport className="method-menu-viewport">
                             {HTTP_METHODS.map((method) => <SelectPrimitive.Item key={method} value={method} className={`method-menu-item ${method.toLowerCase()}`}>
                               <span className="method-dot" aria-hidden="true" />
@@ -1718,8 +1783,9 @@ function App() {
                           <Suspense fallback={<div className="code-editor-loading">Loading editor…</div>}>
                           <CodeEditor
                             label="Request body"
+                            large={request.body.kind === "json"}
                             variables={resolvedVariables}
-                            theme={theme}
+                            theme={themes[theme].mode}
                             language={request.body.kind === "json" ? "json" : "text"}
                             value={request.body.text}
                             onChange={(value) =>
@@ -1759,7 +1825,7 @@ function App() {
                         <Suspense fallback={<div className="code-editor-loading">Loading editor…</div>}><CodeEditor
                           label={`${panel} script`}
                           language="javascript"
-                          theme={theme}
+                          theme={themes[theme].mode}
                           variables={resolvedVariables}
                           value={panel === "pre"
                             ? request.preScript
@@ -1842,8 +1908,8 @@ function App() {
                   {error
                     ? (
                       <div className="response-error">
-                        <strong>{error.split("\n", 1)[0]}</strong>
-                        <pre>{error.includes("\n") ? error.slice(error.indexOf("\n") + 1) : error}</pre>
+                        <strong className="response-error-title">{variableError ? <>Variable <code className="response-variable-chip">{variableError[1]}</code> {variableError[2]}{variableError[3]}</> : errorTitle}</strong>
+                        {error.includes("\n") && <pre>{error.slice(error.indexOf("\n") + 1)}</pre>}
                       </div>
                     )
                     : response
@@ -1907,6 +1973,7 @@ function App() {
         </main>
       </div>
       {contextMenu && <div
+        ref={contextMenuRef}
         className="context-menu"
         role="menu"
         style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -1934,6 +2001,7 @@ function App() {
           </>;
         })() : contextMenu.kind === "tab" ? <>
           <div className="context-menu-label">{findRequest(store, contextMenu.requestId)?.request.name ?? "Request tab"}</div>
+          <button role="menuitem" onClick={() => { togglePinTab(contextMenu.requestId); setContextMenu(null); }}>{pinnedTabs.includes(contextMenu.requestId) ? "Unpin tab" : "Pin tab"}</button>
           <button role="menuitem" onClick={() => { closeTab(contextMenu.requestId); setContextMenu(null); }}>Close</button>
           <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "others"); setContextMenu(null); }}>Close others</button>
           <button role="menuitem" onClick={() => { closeTabsByRelation(contextMenu.requestId, "right"); setContextMenu(null); }}>Close other tabs to the right</button>
@@ -1964,7 +2032,7 @@ function App() {
             <button role="menuitem" onClick={() => { setContextMenu(null); rename(target.name, (name) => editCollection(target.id, (next) => { next.name = name; })); }}>Rename</button>
             <button role="menuitem" onClick={() => { addRequest(target.id); expandNodes(target.id); setContextMenu(null); }}>New request</button>
             <button role="menuitem" onClick={() => { editCollection(target.id, (next) => next.folders.push({ id: uid(), name: "New folder", parentId: null })); expandNodes(target.id); setContextMenu(null); }}>New folder</button>
-            <button role="menuitem" onClick={() => { setConfigCollectionId(target.id); setConfigOpen(true); setContextMenu(null); }}>Configure source…</button>
+            <button role="menuitem" onClick={() => { setConfigCollectionId(target.id); setSettingsSection("collection"); setConfigOpen(true); setContextMenu(null); }}>Configure source…</button>
             <div className="context-menu-separator" />
             <button role="menuitem" className="danger" onClick={() => { deleteCollectionById(target.id); setContextMenu(null); }}>Delete collection</button>
           </>;
@@ -2021,13 +2089,28 @@ function App() {
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="source-config-dialog">
           <DialogHeader><DialogTitle>Settings</DialogTitle><DialogDescription>Choose how Kodama looks and manage this workspace and its collections.</DialogDescription></DialogHeader>
-          <div className="source-config-section">
-            <div className="source-config-heading"><strong>Appearance</strong></div>
-            <div className="settings-theme-options" role="group" aria-label="Theme">
-              <button className={theme === "light" ? "active" : ""} aria-pressed={theme === "light"} onClick={() => setTheme("light")}>Light</button>
-              <button className={theme === "dark" ? "active" : ""} aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>Dark</button>
+          <div className="settings-layout">
+            <nav className="settings-nav" aria-label="Settings sections">
+              <button className={settingsSection === "appearance" ? "active" : ""} onClick={() => setSettingsSection("appearance")}>Appearance</button>
+              <button className={settingsSection === "imports" ? "active" : ""} onClick={() => setSettingsSection("imports")}>Import &amp; export</button>
+              <button className={settingsSection === "collection" ? "active" : ""} onClick={() => setSettingsSection("collection")}>Collection sync</button>
+            </nav>
+            <div className="settings-pane">
+          {settingsSection === "appearance" && <>
+          <div className="settings-pane-heading"><strong>Appearance</strong><span>Choose the look of your workspace.</span></div>
+          {themeGroups.map((group) => <div className="source-config-section" key={group.label}>
+            <div className="source-config-heading"><strong>{group.label}</strong></div>
+            <div className="theme-variant-grid" role="group" aria-label={`${group.label} variants`}>
+              {group.options.map((id) => <button key={id} className={`theme-variant${theme === id ? " active" : ""}`} aria-pressed={theme === id} onClick={() => setTheme(id)}>
+                <span className="theme-variant-preview" aria-hidden="true" style={{ "--theme-surface": themes[id].surface, "--theme-accent": themes[id].accent } as React.CSSProperties} />
+                {themes[id].label}
+                {theme === id && <Check size={14} aria-hidden="true" />}
+              </button>)}
             </div>
-          </div>
+          </div>)}
+          </>}
+          {settingsSection === "imports" && <>
+          <div className="settings-pane-heading"><strong>Import &amp; export</strong><span>Choose how incoming routes are named and save or load workspace data.</span></div>
           <div className="source-config-section">
             <div className="source-config-heading"><strong>Workspace data</strong><span>{activeWorkspace.name}</span></div>
             <div className="settings-import-option">
@@ -2053,6 +2136,8 @@ function App() {
               <button className="subtle" onClick={() => { setConfigOpen(false); void exportFile(); }}>Export workspace</button>
             </div>
           </div>
+          </>}
+          {settingsSection === "collection" && <>
           <div className="settings-collection-heading"><strong>Collection settings</strong><span>Link an OpenAPI JSON, YAML, JavaScript, or TypeScript file to keep routes synced.</span></div>
           {store.collections.length ? <>
             <label className="dialog-label" htmlFor="source-collection">Collection</label>
@@ -2069,6 +2154,7 @@ function App() {
                 <code className="source-path">{configCollection.source?.path ?? "Choose a file to add and sync routes in this collection."}</code>
                 {configCollection.source?.lastSyncedAt && <small>Last synced {new Date(configCollection.source.lastSyncedAt).toLocaleString()}</small>}
                 {sourceStatus[configCollection.id] && <p className={`source-status${sourceStatus[configCollection.id].error ? " error" : ""}`}>{sourceStatus[configCollection.id].message}</p>}
+                {!!sourceWarnings[configCollection.id]?.length && <details className="source-warning-list"><summary>{sourceWarnings[configCollection.id].length} source warnings</summary><ul>{sourceWarnings[configCollection.id].map((warning, index) => <li key={index}><strong>{warning.path}</strong><span>{warning.message}</span></li>)}</ul></details>}
                 <div className="source-actions">
                   <button className="subtle" disabled={sourceStatus[configCollection.id]?.busy} onClick={() => void chooseSourceFile(configCollection.id)}>{configCollection.source ? "Change file" : "Link file to this collection"}</button>
                   {configCollection.source && <>
@@ -2092,6 +2178,16 @@ function App() {
             <p className="settings-section-description">Choose an OpenAPI JSON, YAML, JavaScript, or TypeScript file to create a collection using its document title. Kodama will keep its routes synced to the file.</p>
             <div className="source-actions"><button className="subtle" onClick={() => void createCollectionFromSourceFileDialog()}>Create collection from file</button></div>
           </div>}
+          </>}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={importWarnings.length > 0} onOpenChange={(open) => { if (!open) setImportWarnings([]); }}>
+        <DialogContent className="import-warning-dialog">
+          <DialogHeader><DialogTitle>Imported with {importWarnings.length} warnings</DialogTitle><DialogDescription>Valid routes were imported. These source items could not be read and were skipped.</DialogDescription></DialogHeader>
+          <ul className="source-warning-list import-warning-items">{importWarnings.map((warning, index) => <li key={index}><strong>{warning.path}</strong><span>{warning.message}</span></li>)}</ul>
+          <DialogFooter><button className="subtle" onClick={() => setImportWarnings([])}>Done</button></DialogFooter>
         </DialogContent>
       </Dialog>
       <AlertDialog open={!!replaceSourceId} onOpenChange={(open) => { if (!open) setReplaceSourceId(null); }}>

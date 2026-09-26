@@ -6,21 +6,39 @@ import { linter, lintGutter } from "@codemirror/lint";
 import { indentWithTab } from "@codemirror/commands";
 import { autocompletion, type CompletionContext } from "@codemirror/autocomplete";
 import { EditorState } from "@codemirror/state";
-import { EditorView, hoverTooltip, keymap } from "@codemirror/view";
+import { Decoration, EditorView, hoverTooltip, keymap, WidgetType } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
 import type { ResolvedVariable } from "./VariableField";
-import { getResolvedVariable, variableSuggestions } from "./variableResolution";
+import { getResolvedVariable, variableHasValue, variableSuggestions } from "./variableResolution";
 
 type Props = {
   value: string;
   onChange: (value: string) => void;
   language: "json" | "javascript" | "text";
   label: string;
+  large?: boolean;
   variables: Record<string, ResolvedVariable>;
   theme: "dark" | "light";
 };
 
-export function CodeEditor({ value, onChange, language, label, variables, theme }: Props) {
+class VariableChip extends WidgetType {
+  constructor(readonly name: string, readonly from: number, readonly value: string | undefined) { super(); }
+  eq(other: VariableChip) { return this.name === other.name && this.from === other.from && this.value === other.value; }
+  toDOM(view: EditorView) {
+    const chip = document.createElement("span");
+    chip.className = `code-variable-chip${this.value ? "" : " missing"}`;
+    chip.textContent = this.name;
+    chip.title = this.value ? `${this.name}: ${this.value}` : `${this.name}: Unresolved variable`;
+    chip.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: this.from + 2 } });
+      view.focus();
+    });
+    return chip;
+  }
+}
+
+export function CodeEditor({ value, onChange, language, label, variables, theme, large = false }: Props) {
   const extensions = useMemo(() => {
     const variableCompletion = (context: CompletionContext) => {
       const match = context.matchBefore(/\{\{[^{}]*/);
@@ -69,14 +87,32 @@ export function CodeEditor({ value, onChange, language, label, variables, theme 
       }
       return null;
     });
+    const variableChips = EditorView.decorations.of((view) => {
+      const ranges = [];
+      const selection = view.state.selection.main;
+      for (const { from: visibleFrom, to: visibleTo } of view.visibleRanges) {
+        const visible = view.state.doc.sliceString(visibleFrom, visibleTo);
+        for (const match of visible.matchAll(/\{\{\s*([^{}\n]+?)\s*\}\}/g)) {
+          const from = visibleFrom + (match.index ?? 0);
+          const to = from + match[0].length;
+          const name = match[1].trim();
+          const active = view.hasFocus && (selection.empty
+            ? selection.head > from && selection.head < to
+            : selection.from < to && selection.to > from);
+          if (active) ranges.push(Decoration.mark({ class: `code-variable-active${variableHasValue(name, variables) ? "" : " missing"}` }).range(from, to));
+          else ranges.push(Decoration.replace({ widget: new VariableChip(name, from, getResolvedVariable(name, variables)?.value) }).range(from, to));
+        }
+      }
+      return Decoration.set(ranges, true);
+    });
     return [
       EditorState.tabSize.of(2), indentUnit.of("  "), keymap.of([indentWithTab]),
-      EditorView.lineWrapping, EditorView.contentAttributes.of({ "aria-label": label }), variableHover,
+      EditorView.lineWrapping, EditorView.contentAttributes.of({ "aria-label": label }), variableHover, variableChips,
       autocompletion({ override: [variableCompletion] }),
       ...(language === "json" ? [json(), linter((view) => view.state.doc.toString().trim() ? jsonParseLinter()(view) : []), lintGutter()] : language === "javascript" ? [javascript()] : []),
     ];
   }, [language, variables, label]);
-  return <div className="code-editor" aria-label={label}>
+  return <div className={`code-editor${large ? " large" : ""}`} aria-label={label}>
     <CodeMirror value={value} onChange={onChange} extensions={extensions} theme={theme} basicSetup={{ autocompletion: false }} />
     <div className="editor-help">Tab indents · Shift+Tab outdents · Esc then Tab moves focus</div>
   </div>;

@@ -1,0 +1,247 @@
+/* Catppuccin values: https://catppuccin.com/palette/
+   Tokyo Night values: https://github.com/folke/tokyonight.nvim
+   Rosé Pine values: https://github.com/rose-pine/neovim/blob/main/lua/rose-pine/palette.lua
+   Monokai values: https://github.com/loctvl842/monokai-pro.nvim/tree/master/lua/monokai-pro/palette
+   GitHub variants and colors: https://primer.style/product/primitives/ */
+html {
+  --kd-bg: #11151b; --kd-panel: #171c23; --kd-panel2: #1b212a; --kd-line: #2b333e;
+  --kd-text: #e8eef5; --kd-muted: #8995a4; --kd-accent: #9ce3bb;
+  --kd-input: #171d25; --kd-hover: #242d37; --kd-code: #dce7ed;
+  --kd-get: #91d9b0; --kd-post: #e4b477; --kd-put: #b7a3ff;
+  --kd-delete: #e49797; --kd-other: #94bfd5; --kd-color-scheme: dark;
+  --kd-on-accent: #17261e;
+  --kd-accent-bg: color-mix(in srgb, var(--kd-accent) 17%, var(--kd-panel));
+}
+
+html[data-kodama-theme="light"] {
+  --kd-bg: #f3f6f5; --kd-panel: #fff; --kd-panel2: #f9fbfa; --kd-line: #dbe3e2;
+  --kd-text: #22312e; --kd-muted: #536660; --kd-accent: #277e61;
+  --kd-input: #fff; --kd-hover: #edf3f0; --kd-code: #283c35;
+  --kd-get: #176b3d; --kd-post: #985115; --kd-put: #6945a0;
+  --kd-delete: #a92f42; --kd-other: #397ca2; --kd-color-scheme: light;
+  --kd-on-accent: #fff;
+}
+
+html[data-kodama-theme="catppuccin-latte"] {
+  --kd-bg: #eff1f5; --kd-panel: #e6e9ef; --kd-panel2: #dce0e8; --kd-line: #bcc0cc;
+  --kd-text: #4c4f69; --kd-muted: #5c5f77; --kd-accent: #8839ef;
+  --kd-input: #eff1f5; --kd-hover: #dce0e8; --kd-code: #4c4f69;
+  --kd-get: #2f7220; --kd-post: #a54808; --kd-put: #8839ef;
+  --kd-delete: #b51232; --kd-other: #146c9e; --kd-color-scheme: light;
+  --kd-on-accent: #fff;
+}
+html[data-kodama-theme="catppuccin-frappe"] {
+  --kd-bg: #232634; --kd-panel: #292c3c; --kd-panel2: #303446; --kd-line: #51576d;
+  --kd-text: #c6d0f5; --kd-muted: #b5bfe2; --kd-accent: #ca9ee6;
+  --kd-input: #303446; --kd-hover: #414559; --kd-code: #c6d0f5;
+  --kd-get: #a6d189; --kd-post: #ef9f76; --kd-put: #ca9ee6;
+  --kd-delete: #e78284; --kd-other: #85c1dc; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="catppuccin-macchiato"] {
+  --kd-bg: #181926; --kd-panel: #1e2030; --kd-panel2: #24273a; --kd-line: #494d64;
+  --kd-text: #cad3f5; --kd-muted: #b8c0e0; --kd-accent: #c6a0f6;
+  --kd-input: #24273a; --kd-hover: #363a4f; --kd-code: #cad3f5;
+  --kd-get: #a6da95; --kd-post: #f5a97f; --kd-put: #c6a0f6;
+  --kd-delete: #ed8796; --kd-other: #7dc4e4; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="catppuccin-mocha"] {
+  --kd-bg: #11111b; --kd-panel: #181825; --kd-panel2: #1e1e2e; --kd-line: #45475a;
+  --kd-text: #cdd6f4; --kd-muted: #bac2de; --kd-accent: #cba6f7;
+  --kd-input: #1e1e2e; --kd-hover: #313244; --kd-code: #cdd6f4;
+  --kd-get: #a6e3a1; --kd-post: #fab387; --kd-put: #cba6f7;
+  --kd-delete: #f38ba8; --kd-other: #74c7ec; --kd-color-scheme: dark;
+}
+
+html[data-kodama-theme="rose-pine-main"] {
+  --kd-bg: #191724; --kd-panel: #1f1d2e; --kd-panel2: #26233a; --kd-line: #403d52;
+  --kd-text: #e0def4; --kd-muted: #c0bdd6; --kd-accent: #ebbcba;
+  --kd-input: #26233a; --kd-hover: #403d52; --kd-code: #e0def4;
+  --kd-get: #95b1ac; --kd-post: #f6c177; --kd-put: #c4a7e7;
+  --kd-delete: #eb6f92; --kd-other: #9ccfd8; --kd-color-scheme: dark;
+  --kd-on-accent: #191724;
+}
+html[data-kodama-theme="rose-pine-moon"] {
+  --kd-bg: #232136; --kd-panel: #2a273f; --kd-panel2: #393552; --kd-line: #56526e;
+  --kd-text: #e0def4; --kd-muted: #c0bdd6; --kd-accent: #ea9a97;
+  --kd-input: #393552; --kd-hover: #44415a; --kd-code: #e0def4;
+  --kd-get: #95b1ac; --kd-post: #f6c177; --kd-put: #c4a7e7;
+  --kd-delete: #eb6f92; --kd-other: #9ccfd8; --kd-color-scheme: dark;
+  --kd-on-accent: #232136;
+}
+html[data-kodama-theme="rose-pine-dawn"] {
+  --kd-bg: #faf4ed; --kd-panel: #fffaf3; --kd-panel2: #f2e9e1; --kd-line: #cecacd;
+  --kd-text: #464261; --kd-muted: #716d8a; --kd-accent: #a9546b;
+  --kd-input: #fffaf3; --kd-hover: #dfdad9; --kd-code: #464261;
+  --kd-get: #286983; --kd-post: #9b5a0d; --kd-put: #715389;
+  --kd-delete: #a44763; --kd-other: #286983; --kd-color-scheme: light;
+  --kd-on-accent: #fff;
+}
+
+html[data-kodama-theme="tokyo-night-storm"] {
+  --kd-bg: #24283b; --kd-panel: #1f2335; --kd-panel2: #292e42; --kd-line: #3b4261;
+  --kd-text: #c0caf5; --kd-muted: #a9b1d6; --kd-accent: #7aa2f7;
+  --kd-input: #1f2335; --kd-hover: #292e42; --kd-code: #c0caf5;
+  --kd-get: #9ece6a; --kd-post: #e0af68; --kd-put: #bb9af7;
+  --kd-delete: #f7768e; --kd-other: #7dcfff; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="tokyo-night-moon"] {
+  --kd-bg: #222436; --kd-panel: #1e2030; --kd-panel2: #2f334d; --kd-line: #444a73;
+  --kd-text: #c8d3f5; --kd-muted: #a9b8e8; --kd-accent: #82aaff;
+  --kd-input: #1e2030; --kd-hover: #2f334d; --kd-code: #c8d3f5;
+  --kd-get: #c3e88d; --kd-post: #ffc777; --kd-put: #c099ff;
+  --kd-delete: #ff757f; --kd-other: #86e1fc; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="tokyo-night-night"] {
+  --kd-bg: #16161e; --kd-panel: #1a1b26; --kd-panel2: #24283b; --kd-line: #414868;
+  --kd-text: #c0caf5; --kd-muted: #a9b1d6; --kd-accent: #7aa2f7;
+  --kd-input: #24283b; --kd-hover: #292e42; --kd-code: #c0caf5;
+  --kd-get: #9ece6a; --kd-post: #e0af68; --kd-put: #bb9af7;
+  --kd-delete: #f7768e; --kd-other: #7dcfff; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="tokyo-night-day"] {
+  --kd-bg: #e1e2e7; --kd-panel: #e9e9ec; --kd-panel2: #c4c8da; --kd-line: #a1a6c5;
+  --kd-text: #3760bf; --kd-muted: #4b5f9c; --kd-accent: #1f5fc5;
+  --kd-input: #f3f3f5; --kd-hover: #c4c8da; --kd-code: #3760bf;
+  --kd-get: #587539; --kd-post: #80551c; --kd-put: #7847bd;
+  --kd-delete: #c32050; --kd-other: #00617f; --kd-color-scheme: light;
+  --kd-on-accent: #fff;
+}
+
+html[data-kodama-theme="monokai-classic"] {
+  --kd-bg: #161613; --kd-panel: #1d1e19; --kd-panel2: #272822; --kd-line: #57584f;
+  --kd-text: #fdfff1; --kd-muted: #c0c1b5; --kd-accent: #a6e22e;
+  --kd-input: #272822; --kd-hover: #3b3c35; --kd-code: #fdfff1;
+  --kd-get: #a6e22e; --kd-post: #fd971f; --kd-put: #ae81ff;
+  --kd-delete: #f92672; --kd-other: #66d9ef; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="monokai-pro"] {
+  --kd-bg: #19181a; --kd-panel: #221f22; --kd-panel2: #2d2a2e; --kd-line: #5b595c;
+  --kd-text: #fcfcfa; --kd-muted: #c1c0c0; --kd-accent: #a9dc76;
+  --kd-input: #2d2a2e; --kd-hover: #403e41; --kd-code: #fcfcfa;
+  --kd-get: #a9dc76; --kd-post: #fc9867; --kd-put: #ab9df2;
+  --kd-delete: #ff6188; --kd-other: #78dce8; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="monokai-machine"] {
+  --kd-bg: #161b1e; --kd-panel: #1d2528; --kd-panel2: #273136; --kd-line: #545f62;
+  --kd-text: #f2fffc; --kd-muted: #b8c4c3; --kd-accent: #a2e57b;
+  --kd-input: #273136; --kd-hover: #3a4449; --kd-code: #f2fffc;
+  --kd-get: #a2e57b; --kd-post: #ffb270; --kd-put: #baa0f8;
+  --kd-delete: #ff6d7e; --kd-other: #7cd5f1; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="monokai-octagon"] {
+  --kd-bg: #161821; --kd-panel: #1e1f2b; --kd-panel2: #282a3a; --kd-line: #535763;
+  --kd-text: #eaf2f1; --kd-muted: #b2b9bd; --kd-accent: #bad761;
+  --kd-input: #282a3a; --kd-hover: #3a3d4b; --kd-code: #eaf2f1;
+  --kd-get: #bad761; --kd-post: #ff9b5e; --kd-put: #c39ac9;
+  --kd-delete: #ff657a; --kd-other: #9cd1bb; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="monokai-ristretto"] {
+  --kd-bg: #191515; --kd-panel: #211c1c; --kd-panel2: #2c2525; --kd-line: #5b5353;
+  --kd-text: #fff1f3; --kd-muted: #c3b7b8; --kd-accent: #adda78;
+  --kd-input: #2c2525; --kd-hover: #403838; --kd-code: #fff1f3;
+  --kd-get: #adda78; --kd-post: #f38d70; --kd-put: #a8a9eb;
+  --kd-delete: #fd6883; --kd-other: #85dacc; --kd-color-scheme: dark;
+}
+html[data-kodama-theme="monokai-spectrum"] {
+  --kd-bg: #131313; --kd-panel: #191919; --kd-panel2: #222222; --kd-line: #525053;
+  --kd-text: #f7f1ff; --kd-muted: #bab6c0; --kd-accent: #7bd88f;
+  --kd-input: #222222; --kd-hover: #363537; --kd-code: #f7f1ff;
+  --kd-get: #7bd88f; --kd-post: #fd9353; --kd-put: #948ae3;
+  --kd-delete: #fc618d; --kd-other: #5ad4e6; --kd-color-scheme: dark;
+}
+
+html[data-kodama-theme="github-light"] {
+  --kd-bg: #f6f8fa; --kd-panel: #fff; --kd-panel2: #f6f8fa; --kd-line: #d1d9e0;
+  --kd-text: #1f2328; --kd-muted: #59636e; --kd-accent: #0969da;
+  --kd-input: #fff; --kd-hover: #eaeef2; --kd-code: #1f2328;
+  --kd-get: #1a7f37; --kd-post: #9a6700; --kd-put: #6639ba;
+  --kd-delete: #d1242f; --kd-other: #0969da; --kd-color-scheme: light;
+  --kd-on-accent: #fff;
+}
+html[data-kodama-theme="github-light-high-contrast"] {
+  --kd-bg: #fff; --kd-panel: #fff; --kd-panel2: #eaeef2; --kd-line: #57606a;
+  --kd-text: #0e1116; --kd-muted: #24292f; --kd-accent: #0349b4;
+  --kd-input: #fff; --kd-hover: #dbeafe; --kd-code: #0e1116;
+  --kd-get: #116329; --kd-post: #7d4e00; --kd-put: #512a97;
+  --kd-delete: #a40e26; --kd-other: #0349b4; --kd-color-scheme: light;
+  --kd-on-accent: #fff;
+}
+html[data-kodama-theme="github-dark"] {
+  --kd-bg: #0d1117; --kd-panel: #161b22; --kd-panel2: #21262d; --kd-line: #30363d;
+  --kd-text: #e6edf3; --kd-muted: #a2acb6; --kd-accent: #58a6ff;
+  --kd-input: #21262d; --kd-hover: #30363d; --kd-code: #e6edf3;
+  --kd-get: #7ee787; --kd-post: #e3b341; --kd-put: #d2a8ff;
+  --kd-delete: #ff7b72; --kd-other: #79c0ff; --kd-color-scheme: dark;
+  --kd-on-accent: #0d1117;
+}
+html[data-kodama-theme="github-dark-dimmed"] {
+  --kd-bg: #22272e; --kd-panel: #2d333b; --kd-panel2: #373e47; --kd-line: #545d68;
+  --kd-text: #d4dce6; --kd-muted: #b3bdc8; --kd-accent: #539bf5;
+  --kd-input: #373e47; --kd-hover: #444c56; --kd-code: #d4dce6;
+  --kd-get: #6bc675; --kd-post: #d9a745; --kd-put: #b899f3;
+  --kd-delete: #f17870; --kd-other: #6cb6ff; --kd-color-scheme: dark;
+  --kd-on-accent: #101820;
+}
+html[data-kodama-theme="github-dark-high-contrast"] {
+  --kd-bg: #010409; --kd-panel: #0d1117; --kd-panel2: #161b22; --kd-line: #6e7681;
+  --kd-text: #f0f6fc; --kd-muted: #c9d1d9; --kd-accent: #79c0ff;
+  --kd-input: #0d1117; --kd-hover: #1f2a39; --kd-code: #f0f6fc;
+  --kd-get: #7ee787; --kd-post: #f2cc60; --kd-put: #d2a8ff;
+  --kd-delete: #ffa198; --kd-other: #79c0ff; --kd-color-scheme: dark;
+  --kd-on-accent: #010409;
+}
+html[data-kodama-theme] {
+  color-scheme: var(--kd-color-scheme);
+  --background: var(--kd-bg); --foreground: var(--kd-text);
+  --card: var(--kd-panel); --card-foreground: var(--kd-text);
+  --popover: var(--kd-panel); --popover-foreground: var(--kd-text);
+  --primary: var(--kd-accent); --primary-foreground: var(--kd-bg);
+  --secondary: var(--kd-panel2); --secondary-foreground: var(--kd-text);
+  --muted: var(--kd-panel2); --muted-foreground: var(--kd-muted);
+  --accent: var(--kd-hover); --accent-foreground: var(--kd-text);
+  --border: var(--kd-line); --input: var(--kd-line); --ring: var(--kd-accent);
+  --sidebar: var(--kd-panel); --sidebar-foreground: var(--kd-text);
+  --sidebar-primary: var(--kd-accent); --sidebar-primary-foreground: var(--kd-bg);
+  --sidebar-accent: var(--kd-hover); --sidebar-accent-foreground: var(--kd-text);
+  --sidebar-border: var(--kd-line); --sidebar-ring: var(--kd-accent);
+}
+
+.app, [data-slot="dialog-content"], [data-slot="alert-dialog-content"],
+.environment-menu, .method-menu, [data-slot="tooltip-content"] {
+  --bg: var(--kd-bg); --panel: var(--kd-panel); --panel2: var(--kd-panel2);
+  --line: var(--kd-line); --text: var(--kd-text); --muted: var(--kd-muted);
+  --accent: var(--kd-accent); --accent-bg: var(--kd-accent-bg);
+  --input: var(--kd-input); --hover: var(--kd-hover); --code: var(--kd-code);
+  color-scheme: var(--kd-color-scheme);
+}
+
+html[data-kodama-theme] [data-slot="dialog-content"],
+html[data-kodama-theme] [data-slot="alert-dialog-content"] {
+  color: var(--text); background: var(--panel); border-color: var(--line);
+}
+.send { color: var(--kd-on-accent); background: var(--kd-accent); }
+.send:hover { background: color-mix(in srgb, var(--kd-accent) 84%, var(--kd-text)); }
+.method, .method-trigger, .method-menu-item { color: var(--method-color, var(--kd-get)); }
+.tab-pin, .workspace-current, .code-variable-tooltip code, .variable-hover-tooltip code,
+.path-param-row > code, .source-variable code, .runtime-editor > span { color: var(--kd-accent); }
+.tab.pinned { background: color-mix(in srgb, var(--kd-accent) 9%, var(--kd-panel)); }
+.variable-chip, .code-variable-chip {
+  color: var(--kd-text); background: color-mix(in srgb, var(--kd-accent) 28%, var(--kd-panel));
+}
+.code-variable-active {
+  color: var(--kd-text); background: color-mix(in srgb, var(--kd-accent) 44%, var(--kd-panel));
+  box-shadow: inset 0 0 0 1px var(--kd-accent);
+}
+
+/* CodeMirror uses its light/dark syntax mode, while its surfaces follow the selected palette. */
+.code-editor .cm-editor, .code-editor .cm-scroller, .code-editor .cm-gutters {
+  background: var(--input) !important; color: var(--code) !important;
+}
+.code-editor .cm-gutters { border-right-color: var(--line) !important; color: var(--muted) !important; }
+.code-editor .cm-activeLine, .code-editor .cm-activeLineGutter { background: var(--hover) !important; }
+.code-editor .cm-cursor { border-left-color: var(--accent) !important; }
+.code-editor .cm-selectionBackground, .code-editor .cm-editor.cm-focused .cm-selectionBackground { background: color-mix(in srgb, var(--accent) 32%, transparent) !important; }
+
+html[data-kodama-theme] [data-sonner-toaster] [data-sonner-toast] {
+  background: var(--kd-panel); color: var(--kd-text); border-color: var(--kd-line);
+}
