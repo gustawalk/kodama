@@ -85,24 +85,25 @@ are not published as GitHub Releases.
   remain disabled until individually trusted.
 - Import common cURL commands and copy a saved request as cURL. Import OpenAPI
   3 or Swagger 2 JSON/YAML to create requests with paths, parameters, headers, and
-  example request bodies. In **Settings → Workspace data**, choose whether
+  example request bodies. In **Settings → Import & export**, choose whether
   imported request names use operation summaries or route paths such as
   `/accounts/:id`, and whether imported URLs retain the document protocol or use
   HTTP/HTTPS. These choices also apply to linked source syncs.
 - Link a collection to an OpenAPI JSON, YAML, JavaScript, or TypeScript source file in
-  **Settings → Collection settings**. Kodama checks the file every ten seconds while open.
+  **Settings → Collection sync**. Kodama checks the file every ten seconds while open.
   **Create collection from file** creates a collection named from the document
   title and links it in one step, including in an empty workspace.
   Normal sync adds routes and updates untouched imported fields while keeping
   local edits. **Replace collection** restores the whole collection from the
   current source file after confirmation. Internal and relative local JSON/YAML
   `$ref` files beneath the selected source directory are supported and checked
-  for changes with the source.
+  for changes with the source. If one route has a broken reference, Kodama imports
+  the valid routes and shows a report of the skipped items.
 - A session cookie jar carries cookies between requests and can be cleared from
   the response Cookies tab.
-- Local autosave, light/dark themes, and saved folder expansion per workspace.
-  Press Ctrl/Cmd+Enter to send and
-  Ctrl/Cmd+S to save.
+- Local autosave, light/dark themes, saved folder expansion per workspace, and
+  pinned request tabs that reopen after a restart. Closing a pinned tab removes
+  its pin. Press Ctrl/Cmd+Enter to send and Ctrl/Cmd+S to save.
 
 ## Variables and scripts
 
