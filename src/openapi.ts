@@ -9,7 +9,7 @@ const methods = new Set(["get", "post", "put", "patch", "delete", "head", "optio
 export type OpenApiRequestNames = "summary" | "path";
 export type OpenApiScheme = "document" | "http" | "https";
 
-export function importOpenApi(document: unknown, requestNames: OpenApiRequestNames = "summary", importScheme: OpenApiScheme = "document"): Store {
+export function importOpenApi(document: unknown, requestNames: OpenApiRequestNames = "summary", importScheme: OpenApiScheme = "document", onWarning?: (warning: { path: string; message: string }) => void): Store {
   const spec = object(document);
   if (!string(spec.openapi).startsWith("3.") && spec.swagger !== "2.0") {
     throw new Error("Choose an OpenAPI 3 or Swagger 2 document");
@@ -52,9 +52,16 @@ export function importOpenApi(document: unknown, requestNames: OpenApiRequestNam
   };
   let count = 0;
   for (const [path, pathValue] of Object.entries(paths)) {
-    const pathItem = ref(pathValue);
+    let pathItem: Json;
+    try { pathItem = ref(pathValue); }
+    catch (cause) {
+      if (!onWarning) throw cause;
+      onWarning({ path, message: cause instanceof Error ? cause.message : String(cause) });
+      continue;
+    }
     for (const [verb, operationValue] of Object.entries(pathItem)) {
       if (!methods.has(verb)) continue;
+      try {
       const operation = ref(operationValue);
       const pathText = path.replace(/\{([^{}]+)\}/g, ":$1");
       const route = newRequest(requestNames === "path"
@@ -136,8 +143,13 @@ export function importOpenApi(document: unknown, requestNames: OpenApiRequestNam
       }
       collection.requests.push(route);
       count++;
+      } catch (cause) {
+        if (!onWarning) throw cause;
+        onWarning({ path: `${verb.toUpperCase()} ${path}`, message: cause instanceof Error ? cause.message : String(cause) });
+      }
     }
   }
   if (!count) throw new Error("No HTTP operations found in this API document");
+  collection.folders = collection.folders.filter((folder) => collection.requests.some((request) => request.folderId === folder.id));
   return { version: 1, defaults: [], collections: [collection], environments: [], activeEnvironmentId: null };
 }

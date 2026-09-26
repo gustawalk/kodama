@@ -22,6 +22,33 @@ describe("local OpenAPI references", () => {
   });
   test("rejects references outside the selected source directory", async () => {
     const root = { path: "/project/api.json", stamp: "root", contents: "" };
-    await expect(bundleOpenApiRefs(root, { openapi: "3.0.3", paths: { "/x": { $ref: "../private.json#/x" } } }, async () => { throw new Error("File should not be read"); })).rejects.toThrow("leaves the selected source directory");
+    const result = await bundleOpenApiRefs(root, { openapi: "3.0.3", paths: { "/x": { $ref: "../private.json#/x" } } }, async () => { throw new Error("File should not be read"); });
+    expect(result.warnings[0].message).toContain("leaves the selected source directory");
+    expect((result.document as { paths: object }).paths).toEqual({});
+  });
+  test("keeps valid routes when another external path is malformed", async () => {
+    const root = { path: "/project/api.json", stamp: "root", contents: "" };
+    const document = { openapi: "3.0.3", paths: { "/good": { get: { summary: "Good" } }, "/bad": { $ref: "./bad.json" } } };
+    const bundled = await bundleOpenApiRefs(root, document, async (path) => ({ path, stamp: "bad", contents: "{" }));
+    const store = importOpenApi(bundled.document);
+    expect(store.collections[0].requests.map((item) => item.name)).toEqual(["Good"]);
+    expect(bundled.warnings[0].path).toBe("/bad");
+    expect(bundled.dependencies).toEqual([{ path: "/project/bad.json", stamp: "bad" }]);
+  });
+  test("resolves fragment references back to the root and retains routes with missing nested files", async () => {
+    const root = { path: "/project/api.json", stamp: "root", contents: "" };
+    const document = {
+      openapi: "3.0.3", info: { title: "Linked" },
+      components: { schemas: { Item: { type: "object", properties: { name: { type: "string", example: "Lamp" } } } } },
+      paths: { "/items": { post: { parameters: [{ $ref: "./missing-header.json" }], requestBody: { content: { "application/json": { schema: { $ref: "./dto.json#/CreateItem" } } } } } } },
+    };
+    const bundled = await bundleOpenApiRefs(root, document, async (path) => {
+      if (path === "/project/dto.json") return { path, stamp: "dto", contents: JSON.stringify({ CreateItem: { $ref: "#/components/schemas/Item" } }) };
+      throw new Error(`Missing: ${path}`);
+    });
+    const request = importOpenApi(bundled.document).collections[0].requests[0];
+    expect(JSON.parse(request.body.text)).toEqual({ name: "Lamp" });
+    expect(bundled.warnings).toEqual([{ path: "POST /items", message: "Missing OpenAPI reference file: /project/missing-header.json" }]);
+    expect(bundled.dependencies).toContainEqual({ path: "/project/missing-header.json", stamp: "missing" });
   });
 });

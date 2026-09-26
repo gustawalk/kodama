@@ -231,6 +231,11 @@ pub fn source_file_stamp(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn source_file_stamps(paths: Vec<String>) -> Vec<Option<String>> {
+    paths.iter().map(|path| source_stamp(Path::new(path)).ok()).collect()
+}
+
+#[tauri::command]
 pub fn read_source_file(path: String) -> Result<SourceFile, String> {
     let path = Path::new(&path);
     let stamp = source_stamp(path)?;

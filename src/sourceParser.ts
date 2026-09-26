@@ -1,12 +1,12 @@
 export type SourceFile = { path: string; stamp: string; contents: string };
-export type ParsedSource = { document: unknown; placeholders: string[] };
+export type ParsedSource = { document: unknown; placeholders: string[]; dependencies: { path: string; stamp: string }[] };
 import { parseOpenApiText } from "./openapiRefs";
 
 type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => !!value && typeof value === "object" && !Array.isArray(value);
 
-export async function parseOpenApiSource(file: SourceFile): Promise<ParsedSource> {
-  if (/\.(?:json|ya?ml)$/i.test(file.path)) return { document: parseOpenApiText(file.path, file.contents), placeholders: [] };
+export async function parseOpenApiSource(file: SourceFile, read?: (path: string) => Promise<SourceFile>): Promise<ParsedSource> {
+  if (/\.(?:json|ya?ml)$/i.test(file.path)) return { document: parseOpenApiText(file.path, file.contents), placeholders: [], dependencies: [] };
   if (!/\.(?:[cm]?js|tsx?)$/i.test(file.path)) throw new Error("Choose a JSON, YAML, JavaScript, or TypeScript OpenAPI source file");
 
   const ts = await import("typescript");
@@ -15,6 +15,8 @@ export async function parseOpenApiSource(file: SourceFile): Promise<ParsedSource
   const declarations = new Map<string, import("typescript").Expression>();
   const candidates: Array<{ name: string; node: import("typescript").Expression }> = [];
   const placeholders = new Set<string>();
+  const dependencies = new Map<string, string>();
+  const loaded = new Set([file.path]);
   for (const statement of source.statements) {
     if (ts.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations) {
@@ -26,9 +28,79 @@ export async function parseOpenApiSource(file: SourceFile): Promise<ParsedSource
       candidates.push({ name: "default", node: statement.expression });
     }
   }
+  const rootDirectory = file.path.replace(/\\/g, "/").replace(/\/[^/]+$/, "");
+  const sourcePath = (from: string, relative: string) => {
+    const parts = from.replace(/\\/g, "/").split("/");
+    parts.pop();
+    for (const part of relative.split("/")) {
+      if (!part || part === ".") continue;
+      if (part === "..") parts.pop();
+      else parts.push(part);
+    }
+    return parts.join("/");
+  };
+  const loadImported = async (from: string, relative: string): Promise<Map<string, import("typescript").Expression> | null> => {
+    if (!read || !relative.startsWith(".")) return null;
+    const base = sourcePath(from, relative);
+    if (!base.startsWith(`${rootDirectory}/`)) return null;
+    const paths = /\.(?:[cm]?js|tsx?)$/i.test(base) ? [base] : [".ts", ".tsx", ".js", ".mjs", "/index.ts", "/index.js"].map((suffix) => base + suffix);
+    let imported: SourceFile | null = null;
+    for (const path of paths) {
+      try { imported = await read(path); break; }
+      catch (cause) { if (cause instanceof Error && !/No such file|not found|os error 2|ENOENT/i.test(cause.message)) throw cause; }
+    }
+    if (!imported) return null;
+    if (loaded.has(imported.path)) return declarations;
+    loaded.add(imported.path);
+    dependencies.set(imported.path, imported.stamp);
+    const importedSource = ts.createSourceFile(imported.path, imported.contents, ts.ScriptTarget.Latest, true, /\.tsx$/i.test(imported.path) ? ts.ScriptKind.TSX : /\.ts$/i.test(imported.path) ? ts.ScriptKind.TS : ts.ScriptKind.JS);
+    const exported = new Map<string, import("typescript").Expression>();
+    for (const statement of importedSource.statements) {
+      if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+        declarations.set(declaration.name.text, declaration.initializer);
+        if (statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) exported.set(declaration.name.text, declaration.initializer);
+      }
+      if (ts.isExportAssignment(statement)) exported.set("default", statement.expression);
+    }
+    for (const statement of importedSource.statements) {
+      if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+        const child = await loadImported(imported.path, statement.moduleSpecifier.text);
+        if (child && statement.importClause?.namedBindings && ts.isNamedImports(statement.importClause.namedBindings)) for (const binding of statement.importClause.namedBindings.elements) {
+          const value = child.get(binding.propertyName?.text ?? binding.name.text);
+          if (value) declarations.set(binding.name.text, value);
+        }
+      }
+      if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        const child = await loadImported(imported.path, statement.moduleSpecifier.text);
+        if (child) for (const binding of statement.exportClause.elements) {
+          const value = child.get(binding.propertyName?.text ?? binding.name.text);
+          if (value) exported.set(binding.name.text, value);
+        }
+      }
+    }
+    return exported;
+  };
+  for (const statement of source.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      const imported = await loadImported(file.path, statement.moduleSpecifier.text);
+      if (imported && statement.importClause?.namedBindings && ts.isNamedImports(statement.importClause.namedBindings)) for (const binding of statement.importClause.namedBindings.elements) {
+        const value = imported.get(binding.propertyName?.text ?? binding.name.text);
+        if (value) declarations.set(binding.name.text, value);
+      }
+    }
+    if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+      const imported = await loadImported(file.path, statement.moduleSpecifier.text);
+      if (imported) for (const binding of statement.exportClause.elements) {
+        const value = imported.get(binding.propertyName?.text ?? binding.name.text);
+        if (value) candidates.push({ name: binding.name.text, node: value });
+      }
+    }
+  }
   const error = (node: import("typescript").Node, detail: string): never => {
-    const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-    throw new Error(`${detail} (${file.path.split(/[\\/]/).pop()}:${line})`);
+    const owner = node.getSourceFile();
+    const line = owner.getLineAndCharacterOfPosition(node.getStart(owner)).line + 1;
+    throw new Error(`${detail} (${owner.fileName.split(/[\\/]/).pop()}:${line})`);
   };
   const dynamicName = (node: import("typescript").Expression): string => {
     if (ts.isIdentifier(node)) return node.text.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
@@ -116,7 +188,7 @@ export async function parseOpenApiSource(file: SourceFile): Promise<ParsedSource
     try {
       const document = evaluate(candidate.node);
       if (isObject(document) && (typeof document.openapi === "string" || document.swagger === "2.0") && isObject(document.paths)) {
-        return { document, placeholders: [...placeholders] };
+        return { document, placeholders: [...placeholders], dependencies: [...dependencies].map(([path, stamp]) => ({ path, stamp })) };
       }
     } catch (cause) {
       if (/^(openApiDocument|swaggerDocument|default)$/i.test(candidate.name)) throw cause;

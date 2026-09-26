@@ -24,4 +24,20 @@ describe("OpenAPI source parser", () => {
   test("rejects executable expressions inside the document", async () => {
     await expect(parseOpenApiSource({ path: "openapi.ts", stamp: "2", contents: `export const openApiDocument = { openapi: "3.0.3", paths: makeRoutes() };` })).rejects.toThrow("cannot be read safely");
   });
+
+  test("follows relative TypeScript imports and re-exports without running code", async () => {
+    const files = new Map([
+      ["/project/docs/openapi/document.ts", 'import { paths } from "./paths"; import { env } from "../../config/env"; export const openApiDocument = { openapi: "3.0.3", servers: [{ url: `http://localhost:${env.PORT}` }], paths };'],
+      ["/project/docs/openapi/paths/index.ts", 'import { health } from "./health"; export const paths = { ...health };'],
+      ["/project/docs/openapi/paths/health.ts", 'export const health = { "/health": { get: { summary: "Health" } } };'],
+    ]);
+    const parsed = await parseOpenApiSource({ path: "/project/docs/openapi.ts", stamp: "root", contents: 'export { openApiDocument } from "./openapi/document";' }, async (path) => {
+      const contents = files.get(path);
+      if (!contents) throw new Error(`ENOENT: ${path}`);
+      return { path, stamp: path, contents };
+    });
+    expect(Object.keys((parsed.document as { paths: object }).paths)).toEqual(["/health"]);
+    expect(parsed.placeholders).toEqual(["PORT"]);
+    expect(parsed.dependencies).toHaveLength(3);
+  });
 });
