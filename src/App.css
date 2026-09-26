@@ -43,11 +43,24 @@ button {
 .variable-field > input, .variable-field > textarea { width: 100%; }
 .variable-field input.unresolved-variable-field, .variable-field textarea.unresolved-variable-field { color: #c52c3a; }
 html.dark .variable-field input.unresolved-variable-field, html.dark .variable-field textarea.unresolved-variable-field { color: #ff737d; }
-.variable-suggestions { position: absolute; z-index: 45; top: 100%; left: 0; width: max(100%, 260px); max-height: 368px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 12px 28px #0005; padding: 4px; }
-.variable-suggestions button { display: flex; width: 100%; height: 36px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 9px; text-align: left; border-radius: 5px; }
-.variable-suggestions button:hover, .variable-suggestions button.selected { background: var(--hover); }
-.variable-suggestions button span { color: var(--muted); font-size: 11px; }
+.variable-suggestions { --panel: var(--kd-panel); --line: var(--kd-line); --text: var(--kd-text); --muted: var(--kd-muted); --hover: var(--kd-hover); position: fixed; z-index: 300; max-height: 190px; overflow-y: auto; background: var(--panel); color: var(--text); border: 1px solid color-mix(in srgb, var(--line) 78%, var(--text)); border-radius: 9px; box-shadow: 0 14px 32px #0009; padding: 5px; }
+.variable-suggestions button { display: flex; width: 100%; min-height: 34px; align-items: center; gap: 8px; padding: 0 8px; text-align: left; border: 1px solid transparent; border-radius: 6px; }
+.variable-suggestions button:hover { background: var(--hover); }
+.variable-suggestions button.selected { background: color-mix(in srgb, var(--kd-accent) 16%, var(--panel)); border-color: color-mix(in srgb, var(--kd-accent) 32%, transparent); }
+.variable-suggestion-name { flex: none; padding: 3px 6px; border-radius: 4px; color: var(--kd-accent); background: var(--kd-accent-bg); font: 11px/1.3 'JetBrains Mono',monospace; }
+.variable-suggestion-separator { flex: none; color: var(--muted); font-size: 11px; }
+.variable-suggestion-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: color-mix(in srgb, var(--text) 78%, var(--muted)); font: 11px/1.4 'JetBrains Mono',monospace; }
+.variable-suggestions button.selected .variable-suggestion-value { color: var(--text); }
 .variable-suggestions button.missing code, .variable-unset { color: #ff737d; }
+.cm-tooltip.cm-tooltip-autocomplete ul > li {
+  background: var(--panel);
+  color: var(--text);
+}
+.cm-tooltip.cm-tooltip-autocomplete ul > li[aria-selected] {
+  background: color-mix(in srgb, var(--accent) 38%, var(--panel));
+  color: var(--text);
+}
+.cm-tooltip.cm-tooltip-autocomplete ul > li[aria-selected] .cm-completionLabel { color: var(--text); }
 .variable-hover-tooltip { position: fixed; z-index: 120; display: flex; align-items: center; gap: 12px; width: max-content; min-width: min(300px, calc(100vw - 16px)); max-width: min(390px, calc(100vw - 16px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); box-shadow: 0 8px 24px #0005; pointer-events: none; font-size: 13px; }
 .variable-hover-tooltip code { color: #b7a3ff; white-space: nowrap; font-family: 'JetBrains Mono',monospace; font-size: 12px; }
 .variable-hover-tooltip > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

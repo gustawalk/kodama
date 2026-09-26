@@ -27,10 +27,11 @@ describe("variable readiness", () => {
     expect(variableHasValue("$random.uuid", variables)).toBe(true);
   });
 
-  test("shows one runtime suggestion until its scoped alias is requested", () => {
+  test("always suggests runtime variables with the explicit scoped alias", () => {
     const runtime = { value: "abc", source: "Runtime", secret: true };
     const variables = { TOKEN: runtime, "_.TOKEN": runtime };
-    expect(variableSuggestions(activeVariableReference("{{", 2), variables)).toEqual(["TOKEN"]);
+    expect(variableSuggestions(activeVariableReference("{{", 2), variables)).toEqual(["_.TOKEN"]);
+    expect(variableSuggestions(activeVariableReference("{{TOKEN", 7), variables)).toEqual(["_.TOKEN"]);
     expect(variableSuggestions(activeVariableReference("{{_.", 4), variables)).toEqual(["_.TOKEN"]);
     expect(variableInspectorEntries(variables).map(([name]) => name)).toEqual(["_.TOKEN"]);
   });

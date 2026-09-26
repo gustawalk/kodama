@@ -38,7 +38,7 @@ export function variableSuggestions(active: ActiveVariableReference | null, vari
       const label = active.query.startsWith("$") ? name : name.replace(/^\$/, "");
       return label.toLowerCase().includes(active.query) ? [label] : [];
     }
-    if (item.source === "Runtime" && name.startsWith("_.") && !active.query.startsWith("_")) return [];
+    if (item.source === "Runtime" && !name.startsWith("_.")) return [];
     return !active.singleBrace && name.toLowerCase().includes(active.query) ? [name] : [];
   }))].sort().slice(0, 100);
 }

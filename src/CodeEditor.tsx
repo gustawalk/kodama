@@ -44,15 +44,16 @@ export function CodeEditor({ value, onChange, language, label, variables, theme,
       if (!match) return null;
       const filter = match.text.slice(2).trim().toLowerCase();
       const names = variableSuggestions({ start: match.from, query: filter, singleBrace: false }, variables);
-      return { from: match.from, options: names.map((name) => ({
-        label: `{{${name}}}`,
-        detail: getResolvedVariable(name, variables)?.source ?? "Random",
-        info: getResolvedVariable(name, variables)?.value || "Empty value",
-        apply: (view: EditorView, _completion: unknown, from: number, to: number) => {
-          const after = view.state.doc.sliceString(to, to + 2);
-          view.dispatch({ changes: { from, to: to + (after === "}}" ? 2 : 0), insert: `{{${name}}}` }, selection: { anchor: from + name.length + 4 } });
-        },
-      })) };
+      return { from: match.from, options: names.map((name) => {
+        const resolved = getResolvedVariable(name, variables);
+        return {
+          label: `{{${name}}} - ${resolved?.value || "Empty value"}`,
+          apply: (view: EditorView, _completion: unknown, from: number, to: number) => {
+            const after = view.state.doc.sliceString(to, to + 2);
+            view.dispatch({ changes: { from, to: to + (after === "}}" ? 2 : 0), insert: `{{${name}}}` }, selection: { anchor: from + name.length + 4 } });
+          },
+        };
+      }) };
     };
     const variableHover = hoverTooltip((view, pos) => {
       const line = view.state.doc.lineAt(pos);

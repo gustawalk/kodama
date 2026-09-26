@@ -525,12 +525,15 @@ function App() {
       const item = {
         value,
         source: "Runtime",
-        secret: /token|key|secret|password/i.test(name),
+        secret: false,
       };
       values[name] = item;
       values[`_.${name}`] = item;
     });
-    ["uuid", "firstName", "lastName", "fullName", "email", "username", "integer", "boolean"].forEach((name) => {
+    [
+      "uuid", "firstName", "lastName", "fullName", "email", "username", "integer", "boolean",
+      "phoneNumber", "company", "url", "ipv4", "slug", "word", "decimal",
+    ].forEach((name) => {
       values[`$random.${name}`] = { value: "Generated when sent", source: "Random", secret: false };
     });
     return values;
@@ -567,6 +570,8 @@ function App() {
     setCollapsed((previous) => allFoldersExpanded ? [...new Set([...previous, ...ids])] : previous.filter((id) => !ids.has(id)));
   };
   const visibleVariables = variableInspectorEntries(resolvedVariables);
+  const resolvedInspectorVariables = visibleVariables.filter(([, item]) => item.source !== "Random");
+  const randomInspectorVariables = visibleVariables.filter(([, item]) => item.source === "Random");
   const responseBody = useMemo(() => {
     if (!response || response.binary) return "";
     try {
@@ -1489,11 +1494,19 @@ function App() {
                   })}
               />
               <div className="scope-title">Resolved</div>
-              {visibleVariables.map(([name, item]) => (
+              {resolvedInspectorVariables.map(([name, item]) => (
                 <div className="inspector" key={name}>
                   <code>{name}</code>
                   <Tooltip><TooltipTrigger asChild><span tabIndex={0} className={variableHasValue(name, resolvedVariables) ? "" : "variable-unset"}>{variableHasValue(name, resolvedVariables) ? item.secret ? "••••••" : item.value : "Unset"}</span></TooltipTrigger>
                     <TooltipContent>{item.value || "Empty value"} · {item.source}</TooltipContent></Tooltip>
+                </div>
+              ))}
+              <div className="scope-title">Random</div>
+              {randomInspectorVariables.map(([name, item]) => (
+                <div className="inspector" key={name}>
+                  <code>{name}</code>
+                  <Tooltip><TooltipTrigger asChild><span tabIndex={0}>{item.value}</span></TooltipTrigger>
+                    <TooltipContent>{item.value} · {item.source}</TooltipContent></Tooltip>
                 </div>
               ))}
             </div>

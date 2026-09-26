@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { createPortal } from "react-dom";
 import { activeVariableReference, getResolvedVariable, variableHasValue, variableSuggestions, type ResolvedVariable } from "./variableResolution";
 
 export type { ResolvedVariable } from "./variableResolution";
@@ -40,12 +40,48 @@ function referenceAtPointer(field: HTMLInputElement | HTMLTextAreaElement, value
 
 export function VariableField({ value, onChange, variables, label, placeholder, className, multiline, spellCheck }: Props) {
   const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  const suggestionsList = useRef<HTMLDivElement>(null);
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const [selected, setSelected] = useState(0);
   const [hoveredVariable, setHoveredVariable] = useState<{ name: string; x: number; y: number } | null>(null);
+  const [suggestionStyle, setSuggestionStyle] = useState<React.CSSProperties>();
   const active = focused ? activeVariableReference(value, caret) : null;
   const matches = useMemo(() => variableSuggestions(active, variables), [active?.query, active?.singleBrace, variables]);
+  useLayoutEffect(() => {
+    if (!focused || !matches.length || !field.current) return;
+    const positionMenu = () => {
+      const rect = field.current?.getBoundingClientRect();
+      if (!rect) return;
+      const below = Math.max(0, window.innerHeight - rect.bottom - 8);
+      const above = Math.max(0, rect.top - 8);
+      const placeAbove = below < 180 && above > below;
+      const available = placeAbove ? above : below;
+      const width = Math.min(Math.max(rect.width, 260), window.innerWidth - 16);
+      const menuMaxHeight = Math.min(190, available);
+      setSuggestionStyle({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        top: placeAbove ? Math.max(8, rect.top - menuMaxHeight) : rect.bottom,
+        width,
+        maxHeight: menuMaxHeight,
+      });
+    };
+    const handleScroll = (event: Event) => {
+      if (event.target instanceof Node && suggestionsList.current?.contains(event.target)) return;
+      positionMenu();
+    };
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [focused, matches.length]);
+  useLayoutEffect(() => {
+    suggestionsList.current?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selected, matches.length, suggestionStyle]);
   const hasUnresolved = [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)]
     .some((match) => !variableHasValue(match[1].trim(), variables));
   const showTokens = !multiline && !focused && /\{\{\s*[^{}]+?\s*\}\}/.test(value);
@@ -115,13 +151,14 @@ export function VariableField({ value, onChange, variables, label, placeholder, 
         ? <div className="variable-hover-warning"><strong><span aria-hidden="true">⚠</span> {hoveredValue ? "No value set" : "Unresolved"}</strong><small>{hoveredValue ? `Set a value in ${hoveredValue.source.toLowerCase()} variables` : "Not defined in the available variables"}</small></div>
         : <div><small>VALUE</small><span>{hoveredValue?.value}</span></div>}
     </div>}
-    {!!matches.length && <div className="variable-suggestions" role="listbox" aria-label="Variables">
-      {matches.map((name, index) => <Tooltip key={name}>
-        <TooltipTrigger asChild><button type="button" role="option" aria-selected={selected === index}
+    {!!matches.length && suggestionStyle && createPortal(<div ref={suggestionsList} className="variable-suggestions" style={suggestionStyle} role="listbox" aria-label="Variables">
+      {matches.map((name, index) => <button key={name} type="button" role="option" aria-selected={selected === index}
           className={[selected === index && "selected", !variableHasValue(name, variables) && "missing"].filter(Boolean).join(" ")} onMouseDown={(event) => event.preventDefault()}
-          onClick={() => choose(name)}><code>{`{{${name}}}`}</code><span>{getResolvedVariable(name, variables)?.source}</span></button></TooltipTrigger>
-        <TooltipContent>{getResolvedVariable(name, variables)?.value || "Empty value"}</TooltipContent>
-      </Tooltip>)}
-    </div>}
+          onClick={() => choose(name)}>
+            <code className="variable-suggestion-name">{name}</code>
+            <span className="variable-suggestion-separator" aria-hidden="true">—</span>
+            <span className="variable-suggestion-value">{getResolvedVariable(name, variables)?.secret ? "••••••" : getResolvedVariable(name, variables)?.value || "Empty value"}</span>
+          </button>)}
+    </div>, document.body)}
   </div>;
 }

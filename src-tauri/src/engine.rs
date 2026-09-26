@@ -23,8 +23,17 @@ fn random_value(name: &str) -> Result<String, String> {
     const LAST: [&str; 8] = [
         "Lee", "Patel", "Silva", "Kim", "Garcia", "Brown", "Nguyen", "Costa",
     ];
+    const COMPANIES: [&str; 8] = [
+        "Northstar Labs", "Cedar Systems", "Bluebird Software", "Acme Services",
+        "Pioneer Works", "Maple Logistics", "Harbor Health", "Summit Data",
+    ];
+    const WORDS: [&str; 12] = [
+        "account", "invoice", "project", "shipment", "profile", "message", "ticket",
+        "report", "workspace", "subscription", "contact", "document",
+    ];
     let first = FIRST[bytes[0] as usize % FIRST.len()];
     let last = LAST[bytes[1] as usize % LAST.len()];
+    let slug = format!("{}-{}-{}", first.to_lowercase(), last.to_lowercase(), bytes[2]);
     Ok(match name {
         "uuid" => id.to_string(),
         "firstName" => first.into(),
@@ -37,8 +46,16 @@ fn random_value(name: &str) -> Result<String, String> {
             bytes[2]
         ),
         "username" => format!("{}{}", first.to_lowercase(), bytes[2]),
-        "integer" => u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]).to_string(),
+        "integer" => (u16::from_be_bytes([bytes[0], bytes[1]]) % 10_000).to_string(),
         "boolean" => (bytes[0] % 2 == 0).to_string(),
+        "phoneNumber" => format!("+1-202-555-01{:02}", bytes[2] % 100),
+        "company" => COMPANIES[bytes[3] as usize % COMPANIES.len()].into(),
+        "url" => format!("https://example.test/{slug}"),
+        // RFC 5737 TEST-NET-1 range is reserved for documentation/examples.
+        "ipv4" => format!("192.0.2.{}", bytes[3] % 254 + 1),
+        "slug" => slug,
+        "word" => WORDS[bytes[4] as usize % WORDS.len()].into(),
+        "decimal" => format!("{}.{:02}", bytes[5] % 100, bytes[6]),
         _ => return Err(format!("Unknown random generator: {name}")),
     })
 }
@@ -440,6 +457,12 @@ mod tests {
         let generated_alias =
             interpolate("{{random.uuid}}", &HashMap::new(), &HashMap::new()).unwrap();
         assert!(Uuid::parse_str(&generated_alias).is_ok());
+        let integer: u16 = random_value("integer").unwrap().parse().unwrap();
+        assert!(integer < 10_000);
+        assert!(random_value("phoneNumber").unwrap().starts_with("+1-202-555-01"));
+        assert!(random_value("url").unwrap().starts_with("https://example.test/"));
+        assert!(random_value("ipv4").unwrap().starts_with("192.0.2."));
+        assert!(random_value("company").unwrap().len() > 3);
         assert!(interpolate("{{$random.unknown}}", &HashMap::new(), &HashMap::new()).is_err());
         assert!(interpolate("{{random.unknown}}", &HashMap::new(), &HashMap::new()).is_err());
     }
