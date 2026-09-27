@@ -17,7 +17,7 @@
         "width": 1280,
         "height": 800,
         "minWidth": 800,
-        "maximized": true,
+        "fullscreen": true,
         "minHeight": 600
       }
     ],
