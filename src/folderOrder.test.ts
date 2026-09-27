@@ -10,8 +10,16 @@ const folders = [
 
 describe("folder order", () => {
   test("moves a folder among siblings without changing its parent", () => {
-    expect(moveSiblingFolder(folders, "c", -1).filter((item) => !item.parentId).map((item) => item.id)).toEqual(["a", "c", "b"]);
-    expect(reorderSiblingFolder(folders, "a", "c", true).filter((item) => !item.parentId).map((item) => item.id)).toEqual(["b", "c", "a"]);
+    expect(
+      moveSiblingFolder(folders, "c", -1)
+        .filter((item) => !item.parentId)
+        .map((item) => item.id),
+    ).toEqual(["a", "c", "b"]);
+    expect(
+      reorderSiblingFolder(folders, "a", "c", true)
+        .filter((item) => !item.parentId)
+        .map((item) => item.id),
+    ).toEqual(["b", "c", "a"]);
     expect(reorderSiblingFolder(folders, "child", "b", false)).toBe(folders);
   });
 });

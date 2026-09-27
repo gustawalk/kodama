@@ -22,8 +22,16 @@ type Props = {
 };
 
 class VariableChip extends WidgetType {
-  constructor(readonly name: string, readonly from: number, readonly value: string | undefined) { super(); }
-  eq(other: VariableChip) { return this.name === other.name && this.from === other.from && this.value === other.value; }
+  constructor(
+    readonly name: string,
+    readonly from: number,
+    readonly value: string | undefined,
+  ) {
+    super();
+  }
+  eq(other: VariableChip) {
+    return this.name === other.name && this.from === other.from && this.value === other.value;
+  }
   toDOM(view: EditorView) {
     const chip = document.createElement("span");
     chip.className = `code-variable-chip${this.value ? "" : " missing"}`;
@@ -37,23 +45,40 @@ class VariableChip extends WidgetType {
   }
 }
 
-export function CodeEditor({ value, onChange, language, label, variables, theme, large = false }: Props) {
+export function CodeEditor({
+  value,
+  onChange,
+  language,
+  label,
+  variables,
+  theme,
+  large = false,
+}: Props) {
   const extensions = useMemo(() => {
     const variableCompletion = (context: CompletionContext) => {
       const match = context.matchBefore(/\{\{[^{}]*/);
       if (!match) return null;
       const filter = match.text.slice(2).trim().toLowerCase();
-      const names = variableSuggestions({ start: match.from, query: filter, singleBrace: false }, variables);
-      return { from: match.from, options: names.map((name) => {
-        const resolved = getResolvedVariable(name, variables);
-        return {
-          label: `{{${name}}} - ${resolved?.value || "Empty value"}`,
-          apply: (view: EditorView, _completion: unknown, from: number, to: number) => {
-            const after = view.state.doc.sliceString(to, to + 2);
-            view.dispatch({ changes: { from, to: to + (after === "}}" ? 2 : 0), insert: `{{${name}}}` }, selection: { anchor: from + name.length + 4 } });
-          },
-        };
-      }) };
+      const names = variableSuggestions(
+        { start: match.from, query: filter, singleBrace: false },
+        variables,
+      );
+      return {
+        from: match.from,
+        options: names.map((name) => {
+          const resolved = getResolvedVariable(name, variables);
+          return {
+            label: `{{${name}}} - ${resolved?.value || "Empty value"}`,
+            apply: (view: EditorView, _completion: unknown, from: number, to: number) => {
+              const after = view.state.doc.sliceString(to, to + 2);
+              view.dispatch({
+                changes: { from, to: to + (after === "}}" ? 2 : 0), insert: `{{${name}}}` },
+                selection: { anchor: from + name.length + 4 },
+              });
+            },
+          };
+        }),
+      };
     };
     const variableHover = hoverTooltip((view, pos) => {
       const line = view.state.doc.lineAt(pos);
@@ -62,27 +87,32 @@ export function CodeEditor({ value, onChange, language, label, variables, theme,
         const to = from + match[0].length;
         if (pos >= from && pos <= to) {
           const variable = getResolvedVariable(match[1].trim(), variables);
-          return { pos: from, end: to, create: () => {
-            const dom = document.createElement("div");
-            dom.className = `code-variable-tooltip${variable ? "" : " missing"}`;
-            const name = document.createElement("code");
-            name.textContent = `{{${match[1].trim()}}}`;
-            dom.append(name);
-            if (variable) {
-              const label = document.createElement("small");
-              label.textContent = "RESOLVED VALUE";
-              const value = document.createElement("span");
-              value.textContent = variable.value || "Empty value";
-              dom.append(label, value);
-            } else {
-              const warning = document.createElement("strong");
-              warning.textContent = "⚠ Unresolved variable";
-              const hint = document.createElement("span");
-              hint.textContent = "Define it in defaults, the collection, or the active environment.";
-              dom.append(warning, hint);
-            }
-            return { dom };
-          } };
+          return {
+            pos: from,
+            end: to,
+            create: () => {
+              const dom = document.createElement("div");
+              dom.className = `code-variable-tooltip${variable ? "" : " missing"}`;
+              const name = document.createElement("code");
+              name.textContent = `{{${match[1].trim()}}}`;
+              dom.append(name);
+              if (variable) {
+                const label = document.createElement("small");
+                label.textContent = "RESOLVED VALUE";
+                const value = document.createElement("span");
+                value.textContent = variable.value || "Empty value";
+                dom.append(label, value);
+              } else {
+                const warning = document.createElement("strong");
+                warning.textContent = "⚠ Unresolved variable";
+                const hint = document.createElement("span");
+                hint.textContent =
+                  "Define it in defaults, the collection, or the active environment.";
+                dom.append(warning, hint);
+              }
+              return { dom };
+            },
+          };
         }
       }
       return null;
@@ -96,24 +126,57 @@ export function CodeEditor({ value, onChange, language, label, variables, theme,
           const from = visibleFrom + (match.index ?? 0);
           const to = from + match[0].length;
           const name = match[1].trim();
-          const active = view.hasFocus && (selection.empty
-            ? selection.head > from && selection.head < to
-            : selection.from < to && selection.to > from);
-          if (active) ranges.push(Decoration.mark({ class: `code-variable-active${variableHasValue(name, variables) ? "" : " missing"}` }).range(from, to));
-          else ranges.push(Decoration.replace({ widget: new VariableChip(name, from, getResolvedVariable(name, variables)?.value) }).range(from, to));
+          const active =
+            view.hasFocus &&
+            (selection.empty
+              ? selection.head > from && selection.head < to
+              : selection.from < to && selection.to > from);
+          if (active)
+            ranges.push(
+              Decoration.mark({
+                class: `code-variable-active${variableHasValue(name, variables) ? "" : " missing"}`,
+              }).range(from, to),
+            );
+          else
+            ranges.push(
+              Decoration.replace({
+                widget: new VariableChip(name, from, getResolvedVariable(name, variables)?.value),
+              }).range(from, to),
+            );
         }
       }
       return Decoration.set(ranges, true);
     });
     return [
-      EditorState.tabSize.of(2), indentUnit.of("  "), keymap.of([indentWithTab]),
-      EditorView.lineWrapping, EditorView.contentAttributes.of({ "aria-label": label }), variableHover, variableChips,
+      EditorState.tabSize.of(2),
+      indentUnit.of("  "),
+      keymap.of([indentWithTab]),
+      EditorView.lineWrapping,
+      EditorView.contentAttributes.of({ "aria-label": label }),
+      variableHover,
+      variableChips,
       autocompletion({ override: [variableCompletion] }),
-      ...(language === "json" ? [json(), linter((view) => view.state.doc.toString().trim() ? jsonParseLinter()(view) : []), lintGutter()] : language === "javascript" ? [javascript()] : []),
+      ...(language === "json"
+        ? [
+            json(),
+            linter((view) => (view.state.doc.toString().trim() ? jsonParseLinter()(view) : [])),
+            lintGutter(),
+          ]
+        : language === "javascript"
+          ? [javascript()]
+          : []),
     ];
   }, [language, variables, label]);
-  return <div className={`code-editor${large ? " large" : ""}`} aria-label={label}>
-    <CodeMirror value={value} onChange={onChange} extensions={extensions} theme={theme} basicSetup={{ autocompletion: false }} />
-    <div className="editor-help">Tab indents · Shift+Tab outdents · Esc then Tab moves focus</div>
-  </div>;
+  return (
+    <div className={`code-editor${large ? " large" : ""}`} aria-label={label}>
+      <CodeMirror
+        value={value}
+        onChange={onChange}
+        extensions={extensions}
+        theme={theme}
+        basicSetup={{ autocompletion: false }}
+      />
+      <div className="editor-help">Tab indents · Shift+Tab outdents · Esc then Tab moves focus</div>
+    </div>
+  );
 }

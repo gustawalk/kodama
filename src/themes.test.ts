@@ -21,7 +21,12 @@ describe("theme preference", () => {
     expect(choices).toHaveLength(24);
     expect(new Set(choices).size).toBe(choices.length);
     expect(choices.filter((id) => themes[id].mode === "light")).toEqual([
-      "light", "catppuccin-latte", "rose-pine-dawn", "tokyo-night-day", "github-light", "github-light-high-contrast",
+      "light",
+      "catppuccin-latte",
+      "rose-pine-dawn",
+      "tokyo-night-day",
+      "github-light",
+      "github-light-high-contrast",
     ]);
   });
 });

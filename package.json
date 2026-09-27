@@ -7,6 +7,8 @@
     "dev": "vite",
     "demo:server": "bun examples/demo-server.js",
     "build": "tsc && vite build",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{json,ts}\" \"src-tauri/tauri.conf.json\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.{json,ts}\" \"src-tauri/tauri.conf.json\"",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -38,6 +40,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
+    "prettier": "^3.9.9",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "vite": "^8.0.16"

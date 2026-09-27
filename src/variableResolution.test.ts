@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { activeVariableReference, variableHasValue, variableInspectorEntries, variableSuggestions } from "./variableResolution";
+import {
+  activeVariableReference,
+  variableHasValue,
+  variableInspectorEntries,
+  variableSuggestions,
+} from "./variableResolution";
 
 describe("variable readiness", () => {
   test("treats undefined and empty values as unset", () => {
@@ -20,9 +25,15 @@ describe("variable readiness", () => {
       "$random.uuid": { value: "Generated when sent", source: "Random", secret: false },
     };
     expect(variableSuggestions(activeVariableReference("{{", 2), variables)).toEqual(["PORT"]);
-    expect(variableSuggestions(activeVariableReference("{rand", 5), variables)).toEqual(["random.uuid"]);
-    expect(variableSuggestions(activeVariableReference("{{rand", 6), variables)).toEqual(["random.uuid"]);
-    expect(variableSuggestions(activeVariableReference("{{$rand", 7), variables)).toEqual(["$random.uuid"]);
+    expect(variableSuggestions(activeVariableReference("{rand", 5), variables)).toEqual([
+      "random.uuid",
+    ]);
+    expect(variableSuggestions(activeVariableReference("{{rand", 6), variables)).toEqual([
+      "random.uuid",
+    ]);
+    expect(variableSuggestions(activeVariableReference("{{$rand", 7), variables)).toEqual([
+      "$random.uuid",
+    ]);
     expect(variableHasValue("random.uuid", variables)).toBe(true);
     expect(variableHasValue("$random.uuid", variables)).toBe(true);
   });
@@ -31,7 +42,9 @@ describe("variable readiness", () => {
     const runtime = { value: "abc", source: "Runtime", secret: true };
     const variables = { TOKEN: runtime, "_.TOKEN": runtime };
     expect(variableSuggestions(activeVariableReference("{{", 2), variables)).toEqual(["_.TOKEN"]);
-    expect(variableSuggestions(activeVariableReference("{{TOKEN", 7), variables)).toEqual(["_.TOKEN"]);
+    expect(variableSuggestions(activeVariableReference("{{TOKEN", 7), variables)).toEqual([
+      "_.TOKEN",
+    ]);
     expect(variableSuggestions(activeVariableReference("{{_.", 4), variables)).toEqual(["_.TOKEN"]);
     expect(variableInspectorEntries(variables).map(([name]) => name)).toEqual(["_.TOKEN"]);
   });

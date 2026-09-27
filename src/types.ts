@@ -61,10 +61,20 @@ export type Store = {
 };
 export type Workspace = { id: string; name: string; store: Store };
 export type WorkspaceData = { version: number; activeWorkspaceId: string; workspaces: Workspace[] };
-export const emptyStore = (): Store => ({ version: 1, defaults: [], collections: [], environments: [], activeEnvironmentId: null });
+export const emptyStore = (): Store => ({
+  version: 1,
+  defaults: [],
+  collections: [],
+  environments: [],
+  activeEnvironmentId: null,
+});
 export const freshWorkspaceData = (): WorkspaceData => {
   const id = uid();
-  return { version: 1, activeWorkspaceId: id, workspaces: [{ id, name: "My workspace", store: emptyStore() }] };
+  return {
+    version: 1,
+    activeWorkspaceId: id,
+    workspaces: [{ id, name: "My workspace", store: emptyStore() }],
+  };
 };
 export type RunResult = {
   url: string;
@@ -91,10 +101,7 @@ export const variable = (): Variable => ({
   value: "",
   secret: false,
 });
-export const newRequest = (
-  name = "New request",
-  folderId: string | null = null,
-): ApiRequest => ({
+export const newRequest = (name = "New request", folderId: string | null = null): ApiRequest => ({
   id: uid(),
   name,
   method: "GET",
