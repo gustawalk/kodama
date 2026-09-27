@@ -1223,7 +1223,7 @@ html:not(.dark) .response-json-literal { color: #1f5f9e; }
 .response-empty img { width: 25px; height: 25px; margin-bottom: 12px; opacity: .6; }
 .welcome > img { width: 56px; height: 56px; }
 .dialog-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
-.source-config-dialog[data-slot="dialog-content"] { color: var(--text); background: var(--panel); width: min(840px, calc(100vw - 32px)); max-width: none; max-height: min(85vh, 760px); gap: 12px; }
+.source-config-dialog[data-slot="dialog-content"] { display: grid; grid-template-rows: auto minmax(0, 1fr); color: var(--text); background: var(--panel); width: min(840px, calc(100vw - 32px)); max-width: none; height: min(85vh, 760px); max-height: min(85vh, 760px); gap: 12px; }
 .source-config-dialog [data-slot="dialog-description"] { color: var(--muted); }
 .workspace-dialog[data-slot="dialog-content"] { width: min(570px, calc(100vw - 32px)); max-width: none; }
 .workspace-list { display: flex; flex-direction: column; gap: 7px; max-height: min(45vh, 330px); overflow-y: auto; }
@@ -1238,7 +1238,7 @@ html:not(.dark) .response-json-literal { color: #1f5f9e; }
 .workspace-create { display: flex; gap: 8px; margin-top: 8px; }
 .workspace-create input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 6px; }
 .workspace-create button { flex: none; }
-.settings-layout { display: grid; grid-template-columns: 165px minmax(0, 1fr); min-height: 360px; max-height: min(66vh, 640px); overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+.settings-layout { display: grid; grid-template-columns: 165px minmax(0, 1fr); min-height: 0; height: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
 .settings-nav { display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; border-right: 1px solid var(--line); background: var(--panel2); }
 .settings-nav button { padding: 10px 11px; border-radius: 6px; text-align: left; color: var(--muted); font-size: 12px; font-weight: 600; }
 .settings-nav button:hover, .settings-nav button:focus-visible { color: var(--text); background: var(--hover); outline: none; }
@@ -1266,6 +1266,14 @@ html[data-kodama-theme] [data-slot="alert-dialog-cancel"]:hover { background: va
 html[data-kodama-theme] [data-slot="alert-dialog-action"]:hover { background: var(--hover); }
 html[data-kodama-theme] [data-slot="alert-dialog-action"].alert-dialog-destructive-action { border-color: color-mix(in srgb, #f06c75 48%, var(--line)); color: #fff; background: #a93440; }
 html[data-kodama-theme] [data-slot="alert-dialog-action"].alert-dialog-destructive-action:hover { background: #c13d49; }
+.rename-dialog[data-slot="dialog-content"] { width: min(420px, calc(100vw - 32px)); max-width: none; gap: 0; overflow: hidden; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); box-shadow: 0 24px 64px rgb(0 0 0 / 42%); }
+.rename-dialog [data-slot="dialog-header"] { gap: 8px; padding: 20px 20px 14px; }
+.rename-dialog [data-slot="dialog-title"] { color: var(--text); font-size: 16px; font-weight: 700; line-height: 1.35; }
+.rename-dialog [data-slot="dialog-description"] { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.rename-dialog form { display: flex; flex-direction: column; gap: 0; margin: 0; }
+.rename-dialog .dialog-input { width: calc(100% - 40px); margin: 0 20px 18px; }
+.rename-dialog [data-slot="dialog-footer"] { display: flex; justify-content: flex-end; gap: 9px; margin: 0; padding: 12px 16px; border-top: 1px solid var(--line); border-radius: 0; background: var(--panel2); }
+.rename-dialog [data-slot="dialog-close"] { top: 12px; right: 12px; }
 @media (max-width: 640px) { .settings-layout { display: flex; flex-direction: column; } .settings-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); } .settings-nav button { white-space: nowrap; } .settings-pane { min-height: 0; } }
 .source-config-section { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel2); }
 .source-config-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
