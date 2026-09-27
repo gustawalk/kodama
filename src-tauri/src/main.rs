@@ -4,7 +4,9 @@
 use std::env;
 
 fn main() {
-    env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    unsafe {
+        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
 
     kodama_lib::run()
 }

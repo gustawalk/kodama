@@ -24,16 +24,37 @@ fn random_value(name: &str) -> Result<String, String> {
         "Lee", "Patel", "Silva", "Kim", "Garcia", "Brown", "Nguyen", "Costa",
     ];
     const COMPANIES: [&str; 8] = [
-        "Northstar Labs", "Cedar Systems", "Bluebird Software", "Acme Services",
-        "Pioneer Works", "Maple Logistics", "Harbor Health", "Summit Data",
+        "Northstar Labs",
+        "Cedar Systems",
+        "Bluebird Software",
+        "Acme Services",
+        "Pioneer Works",
+        "Maple Logistics",
+        "Harbor Health",
+        "Summit Data",
     ];
     const WORDS: [&str; 12] = [
-        "account", "invoice", "project", "shipment", "profile", "message", "ticket",
-        "report", "workspace", "subscription", "contact", "document",
+        "account",
+        "invoice",
+        "project",
+        "shipment",
+        "profile",
+        "message",
+        "ticket",
+        "report",
+        "workspace",
+        "subscription",
+        "contact",
+        "document",
     ];
     let first = FIRST[bytes[0] as usize % FIRST.len()];
     let last = LAST[bytes[1] as usize % LAST.len()];
-    let slug = format!("{}-{}-{}", first.to_lowercase(), last.to_lowercase(), bytes[2]);
+    let slug = format!(
+        "{}-{}-{}",
+        first.to_lowercase(),
+        last.to_lowercase(),
+        bytes[2]
+    );
     Ok(match name {
         "uuid" => id.to_string(),
         "firstName" => first.into(),
@@ -47,7 +68,7 @@ fn random_value(name: &str) -> Result<String, String> {
         ),
         "username" => format!("{}{}", first.to_lowercase(), bytes[2]),
         "integer" => (u16::from_be_bytes([bytes[0], bytes[1]]) % 10_000).to_string(),
-        "boolean" => (bytes[0] % 2 == 0).to_string(),
+        "boolean" => (bytes[0].is_multiple_of(2)).to_string(),
         "phoneNumber" => format!("+1-202-555-01{:02}", bytes[2] % 100),
         "company" => COMPANIES[bytes[3] as usize % COMPANIES.len()].into(),
         "url" => format!("https://example.test/{slug}"),
@@ -93,9 +114,16 @@ fn resolve_path_params(
                 .iter()
                 .find(|row| row.enabled && row.key == name)
                 .ok_or_else(|| format!("Path parameter :{name} is missing. Add and enable it in Params before sending."))?;
-            let value = interpolate_at(&row.value, variables, runtime, &format!("path parameter :{name}"))?;
+            let value = interpolate_at(
+                &row.value,
+                variables,
+                runtime,
+                &format!("path parameter :{name}"),
+            )?;
             if value.is_empty() {
-                return Err(format!("Path parameter :{name} has no value. Set it in Params before sending."));
+                return Err(format!(
+                    "Path parameter :{name} has no value. Set it in Params before sending."
+                ));
             }
             let mut encoder = Url::parse("https://kodama.invalid/").map_err(|e| e.to_string())?;
             encoder
@@ -154,7 +182,12 @@ fn interpolate(
     Ok(output)
 }
 
-fn interpolate_at(input: &str, variables: &HashMap<String, String>, runtime: &HashMap<String, String>, field: &str) -> Result<String, String> {
+fn interpolate_at(
+    input: &str,
+    variables: &HashMap<String, String>,
+    runtime: &HashMap<String, String>,
+    field: &str,
+) -> Result<String, String> {
     interpolate(input, variables, runtime).map_err(|error| format!("{error}\nUsed in: {field}"))
 }
 
@@ -170,7 +203,12 @@ fn resolve_entries(
         .map(|entry| {
             Ok((
                 interpolate_at(&entry.key, vars, runtime, field)?,
-                interpolate_at(&entry.value, vars, runtime, &format!("{field} {}", entry.key))?,
+                interpolate_at(
+                    &entry.value,
+                    vars,
+                    runtime,
+                    &format!("{field} {}", entry.key),
+                )?,
             ))
         })
         .collect()
@@ -267,13 +305,25 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
     match request.auth.kind.as_str() {
         "basic" => {
             builder = builder.basic_auth(
-                interpolate_at(&request.auth.username, &variables, &runtime, "Basic auth username")?,
-                Some(interpolate_at(&request.auth.password, &variables, &runtime, "Basic auth password")?),
+                interpolate_at(
+                    &request.auth.username,
+                    &variables,
+                    &runtime,
+                    "Basic auth username",
+                )?,
+                Some(interpolate_at(
+                    &request.auth.password,
+                    &variables,
+                    &runtime,
+                    "Basic auth password",
+                )?),
             )
         }
         "bearer" => {
             let token = interpolate_at(&request.auth.token, &variables, &runtime, "Bearer token")?;
-            if token.trim().is_empty() { return Err("Bearer token is empty. Set a token in Auth or run the login request that fills its variable.".into()); }
+            if token.trim().is_empty() {
+                return Err("Bearer token is empty. Set a token in Auth or run the login request that fills its variable.".into());
+            }
             builder = builder.bearer_auth(token)
         }
         _ => {}
@@ -289,7 +339,14 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
                     .body(body);
             }
         }
-        "text" => builder = builder.body(interpolate_at(&request.body.text, &variables, &runtime, "text body")?),
+        "text" => {
+            builder = builder.body(interpolate_at(
+                &request.body.text,
+                &variables,
+                &runtime,
+                "text body",
+            )?)
+        }
         "form" => {
             builder = builder.form(&resolve_entries(
                 &request.body.fields,
@@ -300,7 +357,12 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         }
         "multipart" => {
             let mut form = reqwest::multipart::Form::new();
-            for (key, value) in resolve_entries(&request.body.fields, &variables, &runtime, "multipart field")? {
+            for (key, value) in resolve_entries(
+                &request.body.fields,
+                &variables,
+                &runtime,
+                "multipart field",
+            )? {
                 form = form.text(key, value);
             }
             builder = builder.multipart(form);
@@ -308,24 +370,35 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         _ => {}
     }
     let started = Instant::now();
-    let response = builder
-        .send()
-        .await
-        .map_err(|e| {
-            let kind = if e.is_timeout() { "Request timed out" }
-                else if e.is_connect() { "Could not connect to server" }
-                else if e.is_redirect() { "Redirect failed" }
-                else if e.is_request() { "Invalid request" }
-                else if e.is_body() { "Could not send request body" }
-                else { "Request failed" };
-            let mut causes = Vec::new();
-            let mut source = e.source();
-            while let Some(cause) = source {
-                causes.push(cause.to_string());
-                source = cause.source();
+    let response = builder.send().await.map_err(|e| {
+        let kind = if e.is_timeout() {
+            "Request timed out"
+        } else if e.is_connect() {
+            "Could not connect to server"
+        } else if e.is_redirect() {
+            "Redirect failed"
+        } else if e.is_request() {
+            "Invalid request"
+        } else if e.is_body() {
+            "Could not send request body"
+        } else {
+            "Request failed"
+        };
+        let mut causes = Vec::new();
+        let mut source = e.source();
+        while let Some(cause) = source {
+            causes.push(cause.to_string());
+            source = cause.source();
+        }
+        format!(
+            "{kind}\nURL: {url_text}\nDetails: {e}{}",
+            if causes.is_empty() {
+                String::new()
+            } else {
+                format!("\nCause: {}", causes.join(" → "))
             }
-            format!("{kind}\nURL: {url_text}\nDetails: {e}{}", if causes.is_empty() { String::new() } else { format!("\nCause: {}", causes.join(" → ")) })
-        })?;
+        )
+    })?;
     let status = response.status();
     let response_url = response.url().to_string();
     let status_text = status.canonical_reason().unwrap_or("").to_string();
@@ -420,11 +493,23 @@ mod tests {
     #[test]
     fn missing_and_empty_variables_identify_the_field() {
         let runtime = HashMap::new();
-        let missing = interpolate_at("Bearer {{_.TOKEN}}", &HashMap::new(), &runtime, "Authorization header").unwrap_err();
+        let missing = interpolate_at(
+            "Bearer {{_.TOKEN}}",
+            &HashMap::new(),
+            &runtime,
+            "Authorization header",
+        )
+        .unwrap_err();
         assert!(missing.contains("Variable _.TOKEN is not defined"));
         assert!(missing.contains("Authorization header"));
         let variables = HashMap::from([("PORT".into(), String::new())]);
-        let empty = interpolate_at("http://localhost:{{PORT}}", &variables, &runtime, "request URL").unwrap_err();
+        let empty = interpolate_at(
+            "http://localhost:{{PORT}}",
+            &variables,
+            &runtime,
+            "request URL",
+        )
+        .unwrap_err();
         assert!(empty.contains("has no value"));
         assert!(empty.contains("request URL"));
     }
@@ -459,8 +544,12 @@ mod tests {
         assert!(Uuid::parse_str(&generated_alias).is_ok());
         let integer: u16 = random_value("integer").unwrap().parse().unwrap();
         assert!(integer < 10_000);
-        assert!(random_value("phoneNumber").unwrap().starts_with("+1-202-555-01"));
-        assert!(random_value("url").unwrap().starts_with("https://example.test/"));
+        assert!(random_value("phoneNumber")
+            .unwrap()
+            .starts_with("+1-202-555-01"));
+        assert!(random_value("url")
+            .unwrap()
+            .starts_with("https://example.test/"));
         assert!(random_value("ipv4").unwrap().starts_with("192.0.2."));
         assert!(random_value("company").unwrap().len() > 3);
         assert!(interpolate("{{$random.unknown}}", &HashMap::new(), &HashMap::new()).is_err());

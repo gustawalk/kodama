@@ -4,8 +4,8 @@ import { json, jsonParseLinter } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { linter, lintGutter } from "@codemirror/lint";
 import { indentWithTab } from "@codemirror/commands";
-import { autocompletion, type CompletionContext } from "@codemirror/autocomplete";
-import { EditorState } from "@codemirror/state";
+import { acceptCompletion, autocompletion, type CompletionContext } from "@codemirror/autocomplete";
+import { EditorState, Prec } from "@codemirror/state";
 import { Decoration, EditorView, hoverTooltip, keymap, WidgetType } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
 import type { ResolvedVariable } from "./VariableField";
@@ -150,6 +150,7 @@ export function CodeEditor({
     return [
       EditorState.tabSize.of(2),
       indentUnit.of("  "),
+      Prec.highest(keymap.of([{ key: "Tab", run: acceptCompletion }])),
       keymap.of([indentWithTab]),
       EditorView.lineWrapping,
       EditorView.contentAttributes.of({ "aria-label": label }),
