@@ -16,3 +16,4 @@
 - `src/App.css:.dock-right .response-top` uses a stacked header so wrapped response metadata and the Body/Headers/Cookies tabs have separate rows; keep the find toolbar's input shrinkable at narrow dock widths.
 - `src/App.tsx:prepareSourceFile()` includes dependency stamps from referenced files in collection source metadata; the ten-second polling effect compares root and dependency stamps before syncing.
 - `src/App.tsx:send()` keeps recent request history for the session, retaining response bodies up to 64 KiB unless binary. Clicking a history row opens its request and retained response while leaving the History sidebar selected; unavailable bodies display the saved failure or a retention message.
+- `src/App.tsx` keeps each open request tab's latest response, error, and cookie text in session state keyed by request ID. Closing or replacing a request clears that result; a send that finishes after its tab closes is ignored.

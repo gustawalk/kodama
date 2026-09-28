@@ -74,6 +74,12 @@ import "./App.css";
 import "./themes.css";
 
 type Panel = "params" | "headers" | "auth" | "body" | "pre" | "post";
+type RequestTabResult = { response: RunResult | null; error: string; cookieText: string };
+const emptyRequestTabResult = (): RequestTabResult => ({
+  response: null,
+  error: "",
+  cookieText: "",
+});
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const CodeEditor = lazy(() =>
   import("./CodeEditor").then((module) => ({ default: module.CodeEditor })),
@@ -333,10 +339,13 @@ function App() {
   const [search, setSearch] = useState("");
   const [searchCollapsed, setSearchCollapsed] = useState<string[]>([]);
   const [runtime, setRuntime] = useState<Record<string, string>>({});
-  const [response, setResponse] = useState<RunResult | null>(null);
+  const [tabResults, setTabResults] = useState<Record<string, RequestTabResult>>({});
   const [responseView, setResponseView] = useState<"body" | "headers" | "cookies">("body");
-  const [cookieText, setCookieText] = useState("");
-  const [error, setError] = useState("");
+  const sendGenerationRef = useRef<Record<string, number>>({});
+  const activeTabResult = selectedId ? tabResults[selectedId] : undefined;
+  const response = activeTabResult?.response ?? null;
+  const cookieText = activeTabResult?.cookieText ?? "";
+  const error = activeTabResult?.error ?? "";
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<
     {
@@ -883,11 +892,36 @@ function App() {
       });
     }
   };
+  const updateTabResult = (
+    requestId: string,
+    update: Partial<RequestTabResult>,
+    generation?: number,
+  ) => {
+    if (generation !== undefined && (sendGenerationRef.current[requestId] ?? 0) !== generation)
+      return;
+    setTabResults((previous) => ({
+      ...previous,
+      [requestId]: { ...(previous[requestId] ?? emptyRequestTabResult()), ...update },
+    }));
+  };
+  const clearTabResult = (requestId: string) => {
+    sendGenerationRef.current[requestId] = (sendGenerationRef.current[requestId] ?? 0) + 1;
+    setTabResults((previous) => {
+      if (!(requestId in previous)) return previous;
+      const next = { ...previous };
+      delete next[requestId];
+      return next;
+    });
+  };
+  const clearAllTabResults = () => {
+    new Set([...tabs, ...Object.keys(tabResults)]).forEach((requestId) => {
+      sendGenerationRef.current[requestId] = (sendGenerationRef.current[requestId] ?? 0) + 1;
+    });
+    setTabResults({});
+  };
   const open = (id: string, keepSidebar = false) => {
     setSelectedId(id);
     setTabs((previous) => (previous.includes(id) ? previous : [...previous, id]));
-    setResponse(null);
-    setError("");
     if (!keepSidebar) setSidebar("requests");
   };
   const rename = (original: string, apply: (name: string) => void) => {
@@ -1197,6 +1231,7 @@ function App() {
         });
         const nextTabs = tabs.filter((id) => id !== requestId);
         setTabs(nextTabs);
+        clearTabResult(requestId);
         if (selectedId === requestId) setSelectedId(nextTabs[nextTabs.length - 1] ?? null);
       },
     });
@@ -1206,6 +1241,7 @@ function App() {
     const index = tabs.indexOf(requestId);
     const remaining = tabs.filter((id) => id !== requestId);
     setTabs(remaining);
+    clearTabResult(requestId);
     if (pinnedTabs.includes(requestId))
       setPinnedByWorkspace((previous) => ({
         ...previous,
@@ -1253,6 +1289,7 @@ function App() {
             : tabIndex >= index),
     );
     setTabs(remaining);
+    tabs.filter((id) => !remaining.includes(id)).forEach(clearTabResult);
     if (!remaining.includes(selectedId ?? "")) setSelectedId(requestId);
   };
 
@@ -1312,6 +1349,7 @@ function App() {
         });
         const remainingTabs = tabs.filter((id) => !requestIds.has(id));
         setTabs(remainingTabs);
+        requestIds.forEach(clearTabResult);
         if (selectedId && requestIds.has(selectedId))
           setSelectedId(remainingTabs[remainingTabs.length - 1] ?? null);
       },
@@ -1347,6 +1385,7 @@ function App() {
         });
         const remainingTabs = tabs.filter((id) => !requestIds.has(id));
         setTabs(remainingTabs);
+        requestIds.forEach(clearTabResult);
         if (selectedId && requestIds.has(selectedId))
           setSelectedId(remainingTabs[remainingTabs.length - 1] ?? null);
       },
@@ -1355,9 +1394,10 @@ function App() {
 
   async function send() {
     if (!request || !collection || busy || switchingWorkspace) return;
+    const requestId = request.id;
+    const sendGeneration = sendGenerationRef.current[requestId] ?? 0;
     setBusy(true);
-    setError("");
-    setResponse(null);
+    updateTabResult(requestId, { response: null, error: "", cookieText: "" });
     const startedAt = performance.now();
     try {
       const result = await invoke<RunResult>("send_request", {
@@ -1369,14 +1409,20 @@ function App() {
           runtimeVariables: runtime,
         },
       });
-      setResponse(result);
-      setCookieText(await invoke<string>("get_cookies", { url: result.url }).catch(() => ""));
+      const nextCookieText = await invoke<string>("get_cookies", { url: result.url }).catch(
+        () => "",
+      );
+      updateTabResult(
+        requestId,
+        { response: result, error: "", cookieText: nextCookieText },
+        sendGeneration,
+      );
       setRuntime(result.runtimeVariables);
       setHistory((previous) =>
         [
           {
             id: uid(),
-            requestId: request.id,
+            requestId,
             name: request.name,
             method: request.method,
             status: result.status,
@@ -1392,12 +1438,16 @@ function App() {
       );
     } catch (err) {
       const failure = message(err);
-      setError(failure);
+      updateTabResult(
+        requestId,
+        { response: null, error: failure, cookieText: "" },
+        sendGeneration,
+      );
       setHistory((previous) =>
         [
           {
             id: uid(),
-            requestId: request.id,
+            requestId,
             name: request.name,
             method: request.method,
             status: null,
@@ -1533,6 +1583,7 @@ function App() {
       }));
       if (mode === "replace") {
         const oldIds = new Set(current.requests.map((item) => item.id));
+        oldIds.forEach(clearTabResult);
         const wasSelected = !!selectedId && oldIds.has(selectedId);
         const firstId = preview.collection.requests[0]?.id;
         setTabs((previous) => {
@@ -1541,7 +1592,6 @@ function App() {
         });
         if (wasSelected) {
           setSelectedId(firstId ?? null);
-          setResponse(null);
         }
       }
       const summary: SyncSummary = preview.summary;
@@ -1631,9 +1681,9 @@ function App() {
       setStore(withDefaultEnvironment(incoming));
       setSelectedId(incoming.collections[0]?.requests[0]?.id ?? null);
       setTabs([]);
+      clearAllTabResults();
     } else setStore(withDefaultEnvironment(mergeWorkspace(store, incoming).next));
     setRuntime({});
-    setResponse(null);
     setIncoming(null);
   }
   function resetWorkspaceSession(next: Store) {
@@ -1646,12 +1696,10 @@ function App() {
     const firstId = restoredPins[0] ?? next.collections[0]?.requests[0]?.id ?? null;
     setSelectedId(firstId);
     setTabs(restoredPins.length ? restoredPins : firstId ? [firstId] : []);
+    clearAllTabResults();
     setRuntime({});
-    setResponse(null);
     setHistory([]);
     setExpandedHistory(null);
-    setError("");
-    setCookieText("");
     setSourceStatus({});
     setConfigOpen(false);
     setConfigCollectionId(null);
@@ -2317,12 +2365,14 @@ function App() {
                             return;
                           }
                           open(item.requestId, true);
-                          if (item.response) setResponse(item.response);
-                          else
-                            setError(
-                              item.error ??
-                                "This response body was not retained in history because it was large or binary.",
-                            );
+                          updateTabResult(item.requestId, {
+                            response: item.response,
+                            error: item.response
+                              ? ""
+                              : (item.error ??
+                                "This response body was not retained in history because it was large or binary."),
+                            cookieText: "",
+                          });
                         }}
                         aria-expanded={expandedHistory === item.id}
                       >
@@ -3058,7 +3108,7 @@ function App() {
                           onClick={() => {
                             void invoke("clear_cookies").then(
                               () => {
-                                setCookieText("");
+                                if (selectedId) updateTabResult(selectedId, { cookieText: "" });
                                 toast.success("Session cookies cleared");
                               },
                               (err) => toast.error(message(err)),
