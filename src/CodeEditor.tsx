@@ -98,16 +98,15 @@ export function CodeEditor({
               dom.append(name);
               if (variable) {
                 const label = document.createElement("small");
-                label.textContent = "RESOLVED VALUE";
+                label.textContent = "CURRENT VALUE";
                 const value = document.createElement("span");
                 value.textContent = variable.value || "Empty value";
                 dom.append(label, value);
               } else {
                 const warning = document.createElement("strong");
-                warning.textContent = "⚠ Unresolved variable";
+                warning.textContent = "⚠ Variable not found";
                 const hint = document.createElement("span");
-                hint.textContent =
-                  "Define it in defaults, the collection, or the active environment.";
+                hint.textContent = "Add this name in Variables or choose an environment.";
                 dom.append(warning, hint);
               }
               return { dom };

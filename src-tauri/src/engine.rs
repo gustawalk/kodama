@@ -322,7 +322,7 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         "bearer" => {
             let token = interpolate_at(&request.auth.token, &variables, &runtime, "Bearer token")?;
             if token.trim().is_empty() {
-                return Err("Bearer token is empty. Set a token in Auth or run the login request that fills its variable.".into());
+                return Err("Bearer token is empty. Enter a token or variable in Auth, or choose No auth if this request does not need it.".into());
             }
             builder = builder.bearer_auth(token)
         }

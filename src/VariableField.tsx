@@ -229,12 +229,13 @@ export function VariableField({
           {hoveredUnset ? (
             <div className="variable-hover-warning">
               <strong>
-                <span aria-hidden="true">⚠</span> {hoveredValue ? "No value set" : "Unresolved"}
+                <span aria-hidden="true">⚠</span>{" "}
+                {hoveredValue ? "No value set" : "Variable not found"}
               </strong>
               <small>
                 {hoveredValue
-                  ? `Set a value in ${hoveredValue.source.toLowerCase()} variables`
-                  : "Not defined in the available variables"}
+                  ? `Set a value in ${hoveredValue.source === "Runtime" ? "session" : hoveredValue.source.toLowerCase()} variables`
+                  : "Add this name in Variables or choose an environment"}
               </small>
             </div>
           ) : (

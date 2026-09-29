@@ -2215,10 +2215,11 @@ function App() {
                   <strong>Variables</strong>
                 </div>
                 <p className="hint">
-                  Runtime &gt; environment &gt; collection. Use <code>{"{{NAME}}"}</code> or{" "}
-                  <code>{"{{_.TOKEN}}"}</code> for runtime only.
+                  Reuse a value in a request with <code>{"{{NAME}}"}</code>. Session values take
+                  priority over environment, collection, and default values. Use{" "}
+                  <code>{"{{_.NAME}}"}</code> to use only a session value.
                 </p>
-                <div className="scope-title">Runtime · this session</div>
+                <div className="scope-title">Session variables</div>
                 <button
                   className="text-button"
                   onClick={() =>
@@ -2229,14 +2230,14 @@ function App() {
                     })
                   }
                 >
-                  + Add runtime variable
+                  + Add session variable
                 </button>
                 {Object.keys(runtime).length ? (
                   Object.entries(runtime).map(([name, value]) => (
                     <div className="runtime-editor" key={name}>
                       <span>_.</span>
                       <input
-                        aria-label="Runtime variable name"
+                        aria-label="Session variable name"
                         defaultValue={name}
                         onBlur={(event) => {
                           const nextName = event.target.value.trim().replace(/^_\./, "");
@@ -2280,7 +2281,9 @@ function App() {
                     </div>
                   ))
                 ) : (
-                  <p className="hint">Run Login to set TOKEN.</p>
+                  <p className="hint">
+                    No session variables yet. Add one above, or save one from a response or script.
+                  </p>
                 )}
                 {collection && (
                   <>
@@ -2304,7 +2307,7 @@ function App() {
                     })
                   }
                 />
-                <div className="scope-title">Resolved</div>
+                <div className="scope-title">Current values</div>
                 {resolvedInspectorVariables.map(([name, item]) => (
                   <div className="inspector" key={name}>
                     <code>{name}</code>
@@ -2324,12 +2327,13 @@ function App() {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {item.value || "Empty value"} · {item.source}
+                        {item.value || "Empty value"} ·{" "}
+                        {item.source === "Runtime" ? "Session" : item.source}
                       </TooltipContent>
                     </Tooltip>
                   </div>
                 ))}
-                <div className="scope-title">Random</div>
+                <div className="scope-title">Generated values</div>
                 {randomInspectorVariables.map(([name, item]) => (
                   <div className="inspector" key={name}>
                     <code>{name}</code>
@@ -2781,7 +2785,7 @@ function App() {
                           <VariableField
                             label="Bearer token"
                             variables={resolvedVariables}
-                            placeholder="Token or {{_.TOKEN}}"
+                            placeholder="Enter a token or use {{NAME}}"
                             value={request.auth.token}
                             onChange={(value) =>
                               editRequest((next) => {
@@ -2886,11 +2890,6 @@ function App() {
                           <span>
                             JavaScript · {panel === "pre" ? "before request" : "after response"}
                           </span>
-                          <code>
-                            {panel === "post"
-                              ? "_.TOKEN = response.json().token;"
-                              : "_.NOW = new Date().toISOString();"}
-                          </code>
                         </div>
                         <Suspense
                           fallback={<div className="code-editor-loading">Loading editor…</div>}
@@ -2911,11 +2910,20 @@ function App() {
                           />
                         </Suspense>
                         <p className="hint">
-                          Use <code>_</code> for variables, <code>request</code> for the request
-                          {panel === "post"
-                            ? ', and response.status, response.text(), response.json(), response.header("Header-Name")'
-                            : ""}
-                          . Writes commit only if the script succeeds.
+                          {panel === "pre" ? (
+                            <>
+                              Use <code>request</code> to inspect or change the request and{" "}
+                              <code>_</code> to read or save session variables.
+                            </>
+                          ) : (
+                            <>
+                              Read the result with <code>response.status</code>,{" "}
+                              <code>response.text()</code>, <code>response.json()</code>, or{" "}
+                              <code>response.header(name)</code>. Use <code>_</code> to save values
+                              for later requests.
+                            </>
+                          )}{" "}
+                          Variable changes are saved only if the script succeeds.
                         </p>
                       </div>
                     )}
@@ -3142,7 +3150,7 @@ function App() {
                             </span>
                             <button
                               className="subtle small"
-                              title={`Save ${key} as runtime variable`}
+                              title={`Save ${key} as session variable`}
                               onClick={() =>
                                 setHeaderVariable({
                                   name: key.replace(/[^A-Za-z0-9_]/g, "_").toUpperCase(),
@@ -4174,7 +4182,7 @@ function App() {
             <DialogHeader>
               <DialogTitle>Save response header</DialogTitle>
               <DialogDescription>
-                Store this header value as a runtime variable for the current session.
+                Save this header value for use in requests during this session.
               </DialogDescription>
             </DialogHeader>
             <label className="dialog-label" htmlFor="header-var-name">
