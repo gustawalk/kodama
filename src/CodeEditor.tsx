@@ -3,7 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { json, jsonParseLinter } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { linter, lintGutter } from "@codemirror/lint";
-import { indentWithTab } from "@codemirror/commands";
+import { indentWithTab, redo } from "@codemirror/commands";
 import { acceptCompletion, autocompletion, type CompletionContext } from "@codemirror/autocomplete";
 import { EditorState, Prec } from "@codemirror/state";
 import { Decoration, EditorView, hoverTooltip, keymap, WidgetType } from "@codemirror/view";
@@ -151,6 +151,7 @@ export function CodeEditor({
       EditorState.tabSize.of(2),
       indentUnit.of("  "),
       Prec.highest(keymap.of([{ key: "Tab", run: acceptCompletion }])),
+      keymap.of([{ win: "Ctrl-Shift-z", run: redo, preventDefault: true }]),
       keymap.of([indentWithTab]),
       EditorView.lineWrapping,
       EditorView.contentAttributes.of({ "aria-label": label }),
