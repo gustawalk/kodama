@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Download,
   Ellipsis,
   Eye,
   EyeOff,
@@ -4405,35 +4406,56 @@ function App() {
           }}
         >
           <AlertDialogContent className="update-dialog">
-            <AlertDialogHeader>
-              <AlertDialogTitle>A new Kodama is ready</AlertDialogTitle>
-              <AlertDialogDescription>
-                Kodama v{shownUpdate?.version} is available. Take a look before deciding.
-              </AlertDialogDescription>
+            <AlertDialogHeader className="update-dialog-header">
+              <span className="update-dialog-icon" aria-hidden="true">
+                <Download size={19} />
+              </span>
+              <div className="update-dialog-heading">
+                <span className="update-dialog-kicker">UPDATE AVAILABLE</span>
+                <AlertDialogTitle>Kodama v{shownUpdate?.version} is ready</AlertDialogTitle>
+                <AlertDialogDescription>
+                  See what changed, then update when it works for you.
+                </AlertDialogDescription>
+                <span className="update-version-change">
+                  v{updater.currentVersion} <span aria-hidden="true">→</span> v
+                  {shownUpdate?.version}
+                </span>
+              </div>
             </AlertDialogHeader>
-            <div className="update-notes">
+            <section className="update-notes" aria-label="Release notes">
               <strong>What's new</strong>
               <p>{shownUpdate?.body?.trim() || "No release notes were provided."}</p>
-            </div>
+            </section>
             {previewActive && (
-              <p className="update-preview-note">Preview only. No update will be installed.</p>
+              <p className="update-preview-note">
+                <Info size={15} aria-hidden="true" />
+                This is a preview. No update will be downloaded or installed.
+              </p>
             )}
             {updater.installing && (
-              <p role="status">
-                {updater.totalBytes
-                  ? `Downloading… ${Math.min(100, Math.round((updater.downloadedBytes / updater.totalBytes) * 100))}%`
-                  : "Downloading and installing…"}
-              </p>
+              <div className="update-progress" role="status">
+                <span>
+                  {updater.totalBytes
+                    ? `Downloading update… ${Math.min(100, Math.round((updater.downloadedBytes / updater.totalBytes) * 100))}%`
+                    : "Downloading and installing the update…"}
+                </span>
+                <progress
+                  max={updater.totalBytes ?? undefined}
+                  value={updater.totalBytes ? updater.downloadedBytes : undefined}
+                />
+              </div>
             )}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={updater.installing}>Maybe later</AlertDialogCancel>
               <button
-                className="send"
+                className={`send${updater.installing ? " installing" : ""}`}
                 disabled={previewActive || updater.installing || updater.checking}
+                title={previewActive ? "Installing is disabled in preview mode" : undefined}
                 onClick={() => {
                   if (!previewActive) void updater.installUpdate();
                 }}
               >
+                {!updater.installing && <Download size={15} aria-hidden="true" />}
                 {updater.installing ? "Updating…" : "Update Kodama"}
               </button>
             </AlertDialogFooter>
