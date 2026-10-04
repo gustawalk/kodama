@@ -88,7 +88,7 @@ jobs:
       - name: Require signing secrets
         run: test -n "$TAURI_SIGNING_PRIVATE_KEY" && test -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
       - run: bun ci
-      - run: bun run tauri build --bundles dmg --ci
+      - run: bun run tauri build --bundles dmg,app --ci
       - name: Check updater archive and signature
         run: |
           ls src-tauri/target/release/bundle/dmg/*.dmg
