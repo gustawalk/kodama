@@ -111,8 +111,9 @@ are not published as GitHub Releases.
 Kodama checks GitHub Releases for signed updates when the desktop app starts.
 Settings > General shows the installed version and lets you check again. A new
 version is installed only after you review its release notes and confirm.
-Development builds include a safe preview switch in Settings > General to try
-the update prompt without downloading or installing anything.
+Development builds include a safe preview switch in Settings > General. Enable
+it, then click Check for updates to open a sample update prompt without
+downloading or installing anything.
 
 The release workflow builds signed Windows NSIS, macOS, and Linux AppImage
 downloads, publishes `updater.json` with release notes, and deletes temporary

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
+import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { version as packageVersion } from "../package.json";
 
 export function useUpdater() {
   const [currentVersion, setCurrentVersion] = useState(packageVersion);
+  const [tauriVersion, setTauriVersion] = useState<string | null>(null);
   const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -48,6 +49,9 @@ export function useUpdater() {
     void getVersion()
       .then(setCurrentVersion)
       .catch(() => undefined);
+    void getTauriVersion()
+      .then(setTauriVersion)
+      .catch(() => undefined);
     if (import.meta.env.DEV || startupCheckStarted.current) return;
     startupCheckStarted.current = true;
     void checkForUpdates();
@@ -82,6 +86,7 @@ export function useUpdater() {
 
   return {
     currentVersion,
+    tauriVersion,
     availableUpdate,
     checking,
     checked,
