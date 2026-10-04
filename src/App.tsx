@@ -52,6 +52,7 @@ import { previewRequestUrl } from "./requestPreview";
 import { parseOpenApiSource, type SourceFile } from "./sourceParser";
 import { syncCollectionSource, type SyncSummary } from "./sourceSync";
 import { savedTheme, themeGroups, themes, type ThemeId } from "./themes";
+import { useUpdater } from "./useUpdater";
 import { readTabSessions, restoreTabSession, type TabSession } from "./tabSession";
 import type {
   ApiRequest,
@@ -475,9 +476,10 @@ function App() {
     null,
   );
   const [configOpen, setConfigOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<"appearance" | "imports" | "collection">(
-    "appearance",
-  );
+  const [settingsSection, setSettingsSection] = useState<
+    "general" | "appearance" | "imports" | "collection"
+  >("general");
+  const updater = useUpdater();
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
@@ -3745,11 +3747,17 @@ function App() {
             <DialogHeader>
               <DialogTitle>Settings</DialogTitle>
               <DialogDescription>
-                Choose how Kodama looks and manage this workspace and its collections.
+                Manage Kodama, its appearance, and this workspace.
               </DialogDescription>
             </DialogHeader>
             <div className="settings-layout">
               <nav className="settings-nav" aria-label="Settings sections">
+                <button
+                  className={settingsSection === "general" ? "active" : ""}
+                  onClick={() => setSettingsSection("general")}
+                >
+                  General
+                </button>
                 <button
                   className={settingsSection === "appearance" ? "active" : ""}
                   onClick={() => setSettingsSection("appearance")}
@@ -3770,6 +3778,60 @@ function App() {
                 </button>
               </nav>
               <div className="settings-pane">
+                {settingsSection === "general" && (
+                  <>
+                    <div className="settings-pane-heading">
+                      <strong>General</strong>
+                      <span>Check for Kodama updates.</span>
+                    </div>
+                    <div className="source-config-section">
+                      <div className="source-config-heading">
+                        <strong>Version</strong>
+                      </div>
+                      <div className="update-version-row">
+                        <span>Installed</span>
+                        <strong>
+                          {updater.currentVersion ? `v${updater.currentVersion}` : "Loading…"}
+                        </strong>
+                      </div>
+                      {updater.availableUpdate && (
+                        <div className="update-version-row">
+                          <span>Latest available</span>
+                          <strong>v{updater.availableUpdate.version}</strong>
+                        </div>
+                      )}
+                      <small role="status">
+                        {updater.checking
+                          ? "Checking for updates…"
+                          : updater.error
+                            ? `Update check failed: ${updater.error}`
+                            : updater.availableUpdate
+                              ? "A newer version is available."
+                              : updater.checked
+                                ? "You're up to date."
+                                : "No update check completed yet."}
+                      </small>
+                      <div className="source-actions">
+                        <button
+                          className="subtle"
+                          disabled={updater.checking || updater.installing}
+                          onClick={() => void updater.checkForUpdates()}
+                        >
+                          {updater.checking ? "Checking…" : "Check again"}
+                        </button>
+                        {updater.availableUpdate && (
+                          <button
+                            className="send"
+                            disabled={updater.installing || updater.checking}
+                            onClick={() => updater.setPromptOpen(true)}
+                          >
+                            Review update
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
                 {settingsSection === "appearance" && (
                   <>
                     <div className="settings-pane-heading">
@@ -4263,6 +4325,42 @@ function App() {
               >
                 Delete
               </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog
+          open={updater.promptOpen}
+          onOpenChange={(open) => {
+            if (!updater.installing) updater.setPromptOpen(open);
+          }}
+        >
+          <AlertDialogContent className="update-dialog">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Update available</AlertDialogTitle>
+              <AlertDialogDescription>
+                Kodama v{updater.availableUpdate?.version} is available. Install it now?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="update-notes">
+              <strong>Release notes</strong>
+              <p>{updater.availableUpdate?.body?.trim() || "No release notes were provided."}</p>
+            </div>
+            {updater.installing && (
+              <p role="status">
+                {updater.totalBytes
+                  ? `Downloading… ${Math.min(100, Math.round((updater.downloadedBytes / updater.totalBytes) * 100))}%`
+                  : "Downloading and installing…"}
+              </p>
+            )}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={updater.installing}>Later</AlertDialogCancel>
+              <button
+                className="send"
+                disabled={updater.installing || updater.checking}
+                onClick={() => void updater.installUpdate()}
+              >
+                {updater.installing ? "Updating…" : "Install update"}
+              </button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

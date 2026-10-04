@@ -2317,6 +2317,33 @@ html:not(.dark) .response-json-literal {
   padding: 0 9px;
   border-radius: 6px;
 }
+.update-version-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+.update-version-row > span {
+  color: var(--muted);
+}
+.update-dialog[data-slot="alert-dialog-content"] {
+  width: min(540px, calc(100vw - 32px));
+  max-width: none;
+}
+.update-notes {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+.update-notes p {
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
 .source-warning-list {
   margin: 0;
   color: #e7ac7b;
