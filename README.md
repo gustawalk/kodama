@@ -106,6 +106,21 @@ are not published as GitHub Releases.
   Pinned tabs also reopen; closing a pinned tab removes its pin. Press
   Ctrl/Cmd+Enter to send and Ctrl/Cmd+S to save.
 
+## Updates and releases
+
+Kodama checks GitHub Releases for signed updates when the desktop app starts.
+Settings > General shows the installed version and lets you check again. A new
+version is installed only after you review its release notes and confirm.
+
+The release workflow builds signed Windows NSIS, macOS, and Linux AppImage
+downloads, publishes `updater.json` with release notes, and deletes temporary
+workflow artifacts after publication. Configure the repository secrets
+`KODAMA_TAURI_SIGNING_PRIVATE_KEY` and
+`KODAMA_TAURI_SIGNING_PRIVATE_KEY_PASSWORD` before pushing a version tag.
+Keep the private key and password backed up outside the repository. Each tag
+needs matching versions in `package.json`, `src-tauri/Cargo.toml`, and
+`src-tauri/tauri.conf.json`, plus a `docs/releases/vX.Y.Z.md` notes file.
+
 ## Variables and scripts
 
 The exact reference syntax is `{{NAME}}` in URL, query, headers, auth fields,

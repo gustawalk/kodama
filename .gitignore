@@ -15,6 +15,11 @@ dist-ssr
 .env.*
 !.env.example
 docs/
+!docs/
+docs/*
+!docs/releases/
+docs/releases/*
+!docs/releases/*.md
 
 # Editor directories and files
 .vscode/*
