@@ -52,6 +52,7 @@ import { previewRequestUrl } from "./requestPreview";
 import { parseOpenApiSource, type SourceFile } from "./sourceParser";
 import { syncCollectionSource, type SyncSummary } from "./sourceSync";
 import { savedTheme, themeGroups, themes, type ThemeId } from "./themes";
+import { readTabSessions, restoreTabSession, type TabSession } from "./tabSession";
 import type {
   ApiRequest,
   Collection,
@@ -318,6 +319,9 @@ function App() {
   const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tabs, setTabs] = useState<string[]>([]);
+  const tabSessionsRef = useRef<Record<string, TabSession>>(
+    readTabSessions(localStorage.getItem("kodama.tabSessionsByWorkspace")),
+  );
   const [pinnedByWorkspace, setPinnedByWorkspace] = useState<Record<string, string[]>>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("kodama.pinnedByWorkspace") ?? "{}");
@@ -516,6 +520,11 @@ function App() {
     localStorage.setItem("kodama.pinnedByWorkspace", JSON.stringify(pinnedByWorkspace));
   }, [pinnedByWorkspace]);
   useEffect(() => {
+    if (!ready) return;
+    tabSessionsRef.current[workspaceData.activeWorkspaceId] = { tabs, selectedId };
+    localStorage.setItem("kodama.tabSessionsByWorkspace", JSON.stringify(tabSessionsRef.current));
+  }, [ready, workspaceData.activeWorkspaceId, tabs, selectedId]);
+  useEffect(() => {
     localStorage.setItem("kodama.responseDock", responseDock);
   }, [responseDock]);
   useEffect(() => {
@@ -537,12 +546,14 @@ function App() {
         const known = new Set(
           active.store.collections.flatMap((item) => item.requests.map((request) => request.id)),
         );
-        const restoredPins = (pinnedByWorkspace[next.activeWorkspaceId] ?? []).filter((id) =>
-          known.has(id),
+        const restored = restoreTabSession(
+          tabSessionsRef.current[next.activeWorkspaceId],
+          pinnedByWorkspace[next.activeWorkspaceId] ?? [],
+          known,
+          active.store.collections[0]?.requests[0]?.id ?? null,
         );
-        const id = restoredPins[0] ?? active.store.collections[0]?.requests[0]?.id ?? null;
-        setSelectedId(id);
-        setTabs(restoredPins.length ? restoredPins : id ? [id] : []);
+        setSelectedId(restored.selectedId);
+        setTabs(restored.tabs);
         setReady(true);
       })
       .catch((err) => {
@@ -1690,12 +1701,14 @@ function App() {
     const known = new Set(
       next.collections.flatMap((item) => item.requests.map((request) => request.id)),
     );
-    const restoredPins = (pinnedByWorkspace[activeWorkspaceRef.current] ?? []).filter((id) =>
-      known.has(id),
+    const restored = restoreTabSession(
+      tabSessionsRef.current[activeWorkspaceRef.current],
+      pinnedByWorkspace[activeWorkspaceRef.current] ?? [],
+      known,
+      next.collections[0]?.requests[0]?.id ?? null,
     );
-    const firstId = restoredPins[0] ?? next.collections[0]?.requests[0]?.id ?? null;
-    setSelectedId(firstId);
-    setTabs(restoredPins.length ? restoredPins : firstId ? [firstId] : []);
+    setSelectedId(restored.selectedId);
+    setTabs(restored.tabs);
     clearAllTabResults();
     setRuntime({});
     setHistory([]);
@@ -1728,6 +1741,7 @@ function App() {
       setSwitchingWorkspace(false);
       return;
     }
+    tabSessionsRef.current[workspaceData.activeWorkspaceId] = { tabs, selectedId };
     activeWorkspaceRef.current = id;
     setWorkspaceData((previous) => ({ ...previous, activeWorkspaceId: id }));
     resetWorkspaceSession(next.store);
@@ -1742,6 +1756,7 @@ function App() {
       setSwitchingWorkspace(false);
       return;
     }
+    tabSessionsRef.current[workspaceData.activeWorkspaceId] = { tabs, selectedId };
     const id = uid();
     const next = emptyStore();
     activeWorkspaceRef.current = id;
@@ -1764,6 +1779,9 @@ function App() {
       setWorkspaceDialogOpen(true);
       return;
     }
+    if (wasActive) tabSessionsRef.current[id] = { tabs, selectedId };
+    delete tabSessionsRef.current[id];
+    localStorage.setItem("kodama.tabSessionsByWorkspace", JSON.stringify(tabSessionsRef.current));
     if (wasActive) activeWorkspaceRef.current = remaining[0].id;
     setWorkspaceData((previous) => ({
       ...previous,

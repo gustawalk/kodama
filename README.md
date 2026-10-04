@@ -102,8 +102,9 @@ are not published as GitHub Releases.
 - A session cookie jar carries cookies between requests and can be cleared from
   the response Cookies tab.
 - Local autosave, light/dark themes, saved folder expansion per workspace, and
-  pinned request tabs that reopen after a restart. Closing a pinned tab removes
-  its pin. Press Ctrl/Cmd+Enter to send and Ctrl/Cmd+S to save.
+  request tabs that reopen after a restart with their order and active tab.
+  Pinned tabs also reopen; closing a pinned tab removes its pin. Press
+  Ctrl/Cmd+Enter to send and Ctrl/Cmd+S to save.
 
 ## Variables and scripts
 
