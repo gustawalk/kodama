@@ -18,6 +18,7 @@ import {
   PanelRight,
   Pencil,
   Pin,
+  RefreshCw,
   Settings2,
   Trash2,
   X,
@@ -480,6 +481,14 @@ function App() {
     "general" | "appearance" | "imports" | "collection"
   >("general");
   const updater = useUpdater();
+  const [previewUpdate, setPreviewUpdate] = useState(false);
+  const [previewPromptOpen, setPreviewPromptOpen] = useState(false);
+  const previewActive = import.meta.env.DEV && previewUpdate;
+  const sampleUpdate = {
+    version: "0.1.1",
+    body: "A little more polish for your workspace.\nA smoother update experience.\nA few fixes behind the scenes.",
+  };
+  const shownUpdate = previewActive ? sampleUpdate : updater.availableUpdate;
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
@@ -3781,55 +3790,101 @@ function App() {
                 {settingsSection === "general" && (
                   <>
                     <div className="settings-pane-heading">
-                      <strong>General</strong>
-                      <span>Check for Kodama updates.</span>
+                      <strong>About Kodama</strong>
+                      <span>Your app version and the latest improvements, all in one place.</span>
                     </div>
-                    <div className="source-config-section">
-                      <div className="source-config-heading">
-                        <strong>Version</strong>
-                      </div>
-                      <div className="update-version-row">
-                        <span>Installed</span>
-                        <strong>
-                          {updater.currentVersion ? `v${updater.currentVersion}` : "Loading…"}
-                        </strong>
-                      </div>
-                      {updater.availableUpdate && (
-                        <div className="update-version-row">
-                          <span>Latest available</span>
-                          <strong>v{updater.availableUpdate.version}</strong>
+                    <div className="source-config-section update-card">
+                      <div className="update-card-heading">
+                        <span className="update-card-icon" aria-hidden="true">
+                          <RefreshCw size={17} />
+                        </span>
+                        <div>
+                          <strong>Stay up to date</strong>
+                          <span>New versions bring fixes and improvements to Kodama.</span>
                         </div>
-                      )}
-                      <small role="status">
-                        {updater.checking
-                          ? "Checking for updates…"
-                          : updater.error
-                            ? `Update check failed: ${updater.error}`
-                            : updater.availableUpdate
-                              ? "A newer version is available."
-                              : updater.checked
-                                ? "You're up to date."
-                                : "No update check completed yet."}
-                      </small>
+                      </div>
+                      <div className="update-version-grid">
+                        <div>
+                          <span>Your version</span>
+                          <strong>v{updater.currentVersion}</strong>
+                        </div>
+                        <div>
+                          <span>Latest version</span>
+                          <strong>
+                            {shownUpdate
+                              ? `v${shownUpdate.version}`
+                              : updater.checked && !updater.error
+                                ? `v${updater.currentVersion}`
+                                : "—"}
+                          </strong>
+                        </div>
+                      </div>
+                      <p
+                        className="update-message"
+                        role="status"
+                        title={previewActive ? undefined : (updater.error ?? undefined)}
+                      >
+                        {previewActive
+                          ? "Preview mode: a sample update is ready. Nothing will be downloaded."
+                          : updater.checking
+                            ? "Looking for the latest version…"
+                            : updater.error
+                              ? "We couldn't check right now. Please try again in a moment."
+                              : updater.availableUpdate
+                                ? "A new version is ready whenever you are."
+                                : updater.checked
+                                  ? "You're all set! Kodama is up to date."
+                                  : "Kodama checks for updates when it opens. You can also check whenever you like."}
+                      </p>
                       <div className="source-actions">
                         <button
                           className="subtle"
-                          disabled={updater.checking || updater.installing}
+                          disabled={previewActive || updater.checking || updater.installing}
                           onClick={() => void updater.checkForUpdates()}
                         >
-                          {updater.checking ? "Checking…" : "Check again"}
+                          {updater.checking ? "Looking for updates…" : "Check for updates"}
                         </button>
-                        {updater.availableUpdate && (
+                        {shownUpdate && (
                           <button
                             className="send"
                             disabled={updater.installing || updater.checking}
-                            onClick={() => updater.setPromptOpen(true)}
+                            onClick={() =>
+                              previewActive
+                                ? setPreviewPromptOpen(true)
+                                : updater.setPromptOpen(true)
+                            }
                           >
-                            Review update
+                            See what's new
                           </button>
                         )}
                       </div>
                     </div>
+                    {import.meta.env.DEV && (
+                      <div className="source-config-section update-preview-card">
+                        <div>
+                          <strong>Try an update preview</strong>
+                          <small>Test the new-version screen without downloading anything.</small>
+                        </div>
+                        <label className="secret-toggle update-preview-switch">
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            aria-label="Show sample update"
+                            checked={previewUpdate}
+                            onChange={(event) => {
+                              const enabled = event.target.checked;
+                              setPreviewUpdate(enabled);
+                              setPreviewPromptOpen(false);
+                              if (enabled) updater.setPromptOpen(false);
+                            }}
+                          />
+                          <span className="secret-toggle-track" aria-hidden="true">
+                            <span />
+                          </span>
+                          <span>{previewUpdate ? "On" : "Off"}</span>
+                        </label>
+                      </div>
+                    )}
                   </>
                 )}
                 {settingsSection === "appearance" && (
@@ -4329,21 +4384,26 @@ function App() {
           </AlertDialogContent>
         </AlertDialog>
         <AlertDialog
-          open={updater.promptOpen}
+          open={previewActive ? previewPromptOpen : updater.promptOpen}
           onOpenChange={(open) => {
-            if (!updater.installing) updater.setPromptOpen(open);
+            if (previewActive) setPreviewPromptOpen(open);
+            else if (!updater.installing) updater.setPromptOpen(open);
           }}
         >
           <AlertDialogContent className="update-dialog">
             <AlertDialogHeader>
-              <AlertDialogTitle>Update available</AlertDialogTitle>
+              <AlertDialogTitle>
+                {previewActive ? "Previewing an update" : "A new Kodama is ready"}
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                Kodama v{updater.availableUpdate?.version} is available. Install it now?
+                {previewActive
+                  ? "This is a sample update. You can explore the prompt safely."
+                  : `Kodama v${shownUpdate?.version} is available. Take a look before deciding.`}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="update-notes">
-              <strong>Release notes</strong>
-              <p>{updater.availableUpdate?.body?.trim() || "No release notes were provided."}</p>
+              <strong>What's new</strong>
+              <p>{shownUpdate?.body?.trim() || "No release notes were provided."}</p>
             </div>
             {updater.installing && (
               <p role="status">
@@ -4353,14 +4413,18 @@ function App() {
               </p>
             )}
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={updater.installing}>Later</AlertDialogCancel>
-              <button
-                className="send"
-                disabled={updater.installing || updater.checking}
-                onClick={() => void updater.installUpdate()}
-              >
-                {updater.installing ? "Updating…" : "Install update"}
-              </button>
+              <AlertDialogCancel disabled={updater.installing}>
+                {previewActive ? "Close preview" : "Maybe later"}
+              </AlertDialogCancel>
+              {!previewActive && (
+                <button
+                  className="send"
+                  disabled={updater.installing || updater.checking}
+                  onClick={() => void updater.installUpdate()}
+                >
+                  {updater.installing ? "Updating…" : "Update Kodama"}
+                </button>
+              )}
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
