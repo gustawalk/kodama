@@ -3,6 +3,7 @@ import type React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast, Toaster } from "sonner";
 import {
+  ArrowRight,
   Check,
   ChevronDown,
   ChevronRight,
@@ -483,22 +484,7 @@ function App() {
     "general" | "appearance" | "imports" | "collection"
   >("general");
   const updater = useUpdater();
-  const [previewUpdate, setPreviewUpdate] = useState(false);
-  const [previewResult, setPreviewResult] = useState(false);
-  const [previewPromptOpen, setPreviewPromptOpen] = useState(false);
-  const previewActive = import.meta.env.DEV && previewUpdate;
-  const sampleUpdate = {
-    version: updater.currentVersion.replace(
-      /^(\d+\.\d+\.)(\d+).*/,
-      (_, prefix: string, patch: string) => `${prefix}${Number(patch) + 1}`,
-    ),
-    body: "A little more polish for your workspace.\nA smoother update experience.\nA few fixes behind the scenes.",
-  };
-  const shownUpdate = previewActive
-    ? previewResult
-      ? sampleUpdate
-      : null
-    : updater.availableUpdate;
+  const shownUpdate = updater.availableUpdate;
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
@@ -3807,99 +3793,54 @@ function App() {
                       <div className="system-details">
                         <div className="system-detail-row">
                           <span>App version</span>
-                          <strong>{updater.currentVersion}</strong>
+                          <strong className="system-version-value">
+                            <span>{updater.currentVersion}</span>
+                            {shownUpdate && (
+                              <>
+                                <ArrowRight size={14} aria-hidden="true" />
+                                <span>{shownUpdate.version}</span>
+                              </>
+                            )}
+                          </strong>
                         </div>
                         <div className="system-detail-row">
                           <span>Tauri Core</span>
                           <span>{updater.tauriVersion ?? "—"}</span>
                         </div>
-                        <div className="system-detail-row">
-                          <span>Environment</span>
-                          <span className="system-environment">
-                            {import.meta.env.DEV ? "Development" : "Production"}
-                          </span>
-                        </div>
-                        {shownUpdate && (
-                          <div className="system-detail-row">
-                            <span>New version</span>
-                            <strong>{shownUpdate.version}</strong>
-                          </div>
-                        )}
                       </div>
                       <button
                         className="system-check-button"
                         disabled={updater.checking || updater.installing}
-                        onClick={() => {
-                          if (previewActive) {
-                            setPreviewResult(true);
-                            setPreviewPromptOpen(true);
-                          } else void updater.checkForUpdates();
-                        }}
+                        onClick={() => void updater.checkForUpdates()}
                       >
                         <RefreshCw size={15} aria-hidden="true" />
-                        {updater.checking && !previewActive
-                          ? "Checking for updates…"
-                          : "Check for updates"}
+                        {updater.checking ? "Checking for updates…" : "Check for updates"}
                       </button>
                       <p
                         className="system-update-status"
                         role="status"
-                        title={previewActive ? undefined : (updater.error ?? undefined)}
+                        title={updater.error ?? undefined}
                       >
-                        {previewActive
-                          ? previewResult
-                            ? "A sample update is available. This preview won't install anything."
-                            : "Press Check for updates to preview a new version."
-                          : updater.checking
-                            ? "Looking for the latest version…"
-                            : updater.error
-                              ? "We couldn't check right now. Please try again in a moment."
-                              : updater.availableUpdate
-                                ? "A new version is ready. Check its notes before installing."
-                                : updater.checked
-                                  ? "You're all set! Kodama is up to date."
-                                  : "Press Check for updates to look for a new version."}
+                        {updater.checking
+                          ? "Looking for the latest version…"
+                          : updater.error
+                            ? "We couldn't check right now. Please try again in a moment."
+                            : updater.availableUpdate
+                              ? "A new version is ready. Check its notes before installing."
+                              : updater.checked
+                                ? "You're all set! Kodama is up to date."
+                                : "Press Check for updates to look for a new version."}
                       </p>
                       {shownUpdate && (
                         <button
                           className="system-release-button"
                           disabled={updater.installing || updater.checking}
-                          onClick={() =>
-                            previewActive ? setPreviewPromptOpen(true) : updater.setPromptOpen(true)
-                          }
+                          onClick={() => updater.setPromptOpen(true)}
                         >
                           View release notes
                         </button>
                       )}
                     </div>
-                    {import.meta.env.DEV && (
-                      <div className="source-config-section update-preview-card">
-                        <div>
-                          <strong>Simulate an available update</strong>
-                          <small>For testing only. The check will use a sample response.</small>
-                        </div>
-                        <label className="secret-toggle update-preview-switch">
-                          <input
-                            type="checkbox"
-                            role="switch"
-                            aria-label="Use sample update response"
-                            checked={previewUpdate}
-                            disabled={updater.checking || updater.installing}
-                            onChange={(event) => {
-                              const enabled = event.target.checked;
-                              setPreviewUpdate(enabled);
-                              setPreviewResult(false);
-                              setPreviewPromptOpen(false);
-                              if (enabled) updater.setPromptOpen(false);
-                            }}
-                          />
-                          <span className="secret-toggle-track" aria-hidden="true">
-                            <span />
-                          </span>
-                          <span>{previewUpdate ? "On" : "Off"}</span>
-                        </label>
-                      </div>
-                    )}
                   </>
                 )}
                 {settingsSection === "appearance" && (
@@ -4399,13 +4340,18 @@ function App() {
           </AlertDialogContent>
         </AlertDialog>
         <AlertDialog
-          open={previewActive ? previewPromptOpen : updater.promptOpen}
+          open={updater.promptOpen}
           onOpenChange={(open) => {
-            if (previewActive) setPreviewPromptOpen(open);
-            else if (!updater.installing) updater.setPromptOpen(open);
+            if (!updater.installing) updater.setPromptOpen(open);
           }}
         >
-          <AlertDialogContent className="update-dialog">
+          <AlertDialogContent
+            className="update-dialog"
+            onOverlayPointerDown={() => {
+              if (updater.installing) return;
+              updater.setPromptOpen(false);
+            }}
+          >
             <AlertDialogHeader className="update-dialog-header">
               <span className="update-dialog-icon" aria-hidden="true">
                 <Download size={19} />
@@ -4417,8 +4363,9 @@ function App() {
                   See what changed, then update when it works for you.
                 </AlertDialogDescription>
                 <span className="update-version-change">
-                  v{updater.currentVersion} <span aria-hidden="true">→</span> v
-                  {shownUpdate?.version}
+                  <span>v{updater.currentVersion}</span>
+                  <ArrowRight size={14} aria-hidden="true" />
+                  <span>v{shownUpdate?.version}</span>
                 </span>
               </div>
             </AlertDialogHeader>
@@ -4426,12 +4373,6 @@ function App() {
               <strong>What's new</strong>
               <p>{shownUpdate?.body?.trim() || "No release notes were provided."}</p>
             </section>
-            {previewActive && (
-              <p className="update-preview-note">
-                <Info size={15} aria-hidden="true" />
-                This is a preview. No update will be downloaded or installed.
-              </p>
-            )}
             {updater.installing && (
               <div className="update-progress" role="status">
                 <span>
@@ -4449,11 +4390,8 @@ function App() {
               <AlertDialogCancel disabled={updater.installing}>Maybe later</AlertDialogCancel>
               <button
                 className={`send${updater.installing ? " installing" : ""}`}
-                disabled={previewActive || updater.installing || updater.checking}
-                title={previewActive ? "Installing is disabled in preview mode" : undefined}
-                onClick={() => {
-                  if (!previewActive) void updater.installUpdate();
-                }}
+                disabled={updater.installing || updater.checking}
+                onClick={() => void updater.installUpdate()}
               >
                 {!updater.installing && <Download size={15} aria-hidden="true" />}
                 {updater.installing ? "Updating…" : "Update Kodama"}
