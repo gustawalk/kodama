@@ -53,6 +53,7 @@ import { exportCurl, importCurl } from "./curl";
 import { importOpenApi, type OpenApiRequestNames, type OpenApiScheme } from "./openapi";
 import { bundleOpenApiRefs } from "./openapiRefs";
 import { previewRequestUrl } from "./requestPreview";
+import { releaseNotes } from "./releaseNotes";
 import { parseOpenApiSource, type SourceFile } from "./sourceParser";
 import { syncCollectionSource, type SyncSummary } from "./sourceSync";
 import { savedTheme, themeGroups, themes, type ThemeId } from "./themes";
@@ -480,6 +481,7 @@ function App() {
     null,
   );
   const [configOpen, setConfigOpen] = useState(false);
+  const [patchNotesOpen, setPatchNotesOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<
     "general" | "appearance" | "imports" | "collection"
   >("general");
@@ -3826,6 +3828,13 @@ function App() {
                                 ? "You're all set! Kodama is up to date."
                                 : "Press Check for updates to look for a new version."}
                       </p>
+                      <button
+                        className="system-release-button"
+                        type="button"
+                        onClick={() => setPatchNotesOpen(true)}
+                      >
+                        View patch notes
+                      </button>
                       {shownUpdate && (
                         <button
                           className="system-release-button"
@@ -4334,6 +4343,30 @@ function App() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <Dialog open={patchNotesOpen} onOpenChange={setPatchNotesOpen}>
+          <DialogContent className="patch-notes-dialog">
+            <DialogHeader>
+              <DialogTitle>Patch notes</DialogTitle>
+              <DialogDescription>Changes in this and earlier versions of Kodama.</DialogDescription>
+            </DialogHeader>
+            <div className="patch-notes-list">
+              {releaseNotes.map(({ version, changes }, index) => (
+                <details key={version} open={index === 0}>
+                  <summary>
+                    <span>Kodama {version}</span>
+                    {index === 0 && <small>Latest</small>}
+                    <ChevronRight className="patch-notes-chevron" size={15} aria-hidden="true" />
+                  </summary>
+                  <ul>
+                    {changes.map((change) => (
+                      <li key={change}>{change}</li>
+                    ))}
+                  </ul>
+                </details>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
         <AlertDialog
           open={updater.promptOpen}
           onOpenChange={(open) => {

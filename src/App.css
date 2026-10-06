@@ -2404,6 +2404,64 @@ html:not(.dark) .response-json-literal {
   font-size: 11px;
   font-weight: 600;
 }
+.patch-notes-dialog[data-slot="dialog-content"] {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(640px, calc(100dvh - 32px));
+  overflow: hidden;
+}
+.patch-notes-list {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.patch-notes-list details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+}
+.patch-notes-list summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+.patch-notes-list summary::-webkit-details-marker {
+  display: none;
+}
+.patch-notes-list summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.patch-notes-list summary small {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+.patch-notes-chevron {
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform 150ms ease;
+}
+.patch-notes-list details[open] .patch-notes-chevron {
+  transform: rotate(90deg);
+}
+.patch-notes-list ul {
+  margin: 0;
+  padding: 0 18px 14px 32px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.patch-notes-list li + li {
+  margin-top: 7px;
+}
 .source-warning-list {
   margin: 0;
   color: #e7ac7b;
