@@ -6,7 +6,7 @@ import { linter, lintGutter } from "@codemirror/lint";
 import { indentWithTab, redo } from "@codemirror/commands";
 import { acceptCompletion, autocompletion, type CompletionContext } from "@codemirror/autocomplete";
 import { EditorState, Prec } from "@codemirror/state";
-import { Decoration, EditorView, hoverTooltip, keymap, WidgetType } from "@codemirror/view";
+import { Decoration, EditorView, hoverTooltip, keymap } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
 import type { ResolvedVariable } from "./VariableField";
 import { getResolvedVariable, variableHasValue, variableSuggestions } from "./variableResolution";
@@ -20,30 +20,6 @@ type Props = {
   variables: Record<string, ResolvedVariable>;
   theme: "dark" | "light";
 };
-
-class VariableChip extends WidgetType {
-  constructor(
-    readonly name: string,
-    readonly from: number,
-    readonly value: string | undefined,
-  ) {
-    super();
-  }
-  eq(other: VariableChip) {
-    return this.name === other.name && this.from === other.from && this.value === other.value;
-  }
-  toDOM(view: EditorView) {
-    const chip = document.createElement("span");
-    chip.className = `code-variable-chip${this.value ? "" : " missing"}`;
-    chip.textContent = this.name;
-    chip.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      view.dispatch({ selection: { anchor: this.from + 2 } });
-      view.focus();
-    });
-    return chip;
-  }
-}
 
 export function CodeEditor({
   value,
@@ -138,8 +114,8 @@ export function CodeEditor({
             );
           else
             ranges.push(
-              Decoration.replace({
-                widget: new VariableChip(name, from, getResolvedVariable(name, variables)?.value),
+              Decoration.mark({
+                class: `code-variable-chip${variableHasValue(name, variables) ? "" : " missing"}`,
               }).range(from, to),
             );
         }
