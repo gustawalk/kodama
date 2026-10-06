@@ -2092,13 +2092,6 @@ function App() {
                             beginPointerDrag(event, { kind: "collection", collectionId: item.id })
                           }
                           onClick={() => toggleNode(item.id)}
-                          onDoubleClick={() =>
-                            rename(item.name, (name) =>
-                              editCollection(item.id, (next) => {
-                                next.name = name;
-                              }),
-                            )
-                          }
                           onContextMenu={(event) => showCollectionMenu(event, item.id)}
                         >
                           {isNodeCollapsed(item.id) ? "▸" : "▾"} {item.name}
@@ -2449,12 +2442,14 @@ function App() {
             aria-valuenow={sidebarWidth}
             tabIndex={0}
             onPointerDown={(event) => {
+              if (event.button !== 0) return;
               event.preventDefault();
               event.currentTarget.setPointerCapture(event.pointerId);
               document.body.classList.add("resizing-sidebar");
             }}
             onPointerMove={(event) => {
-              if (event.buttons === 1) resizeSidebar(event.movementX);
+              if (event.currentTarget.hasPointerCapture(event.pointerId) && event.buttons === 1)
+                resizeSidebar(event.movementX);
             }}
             onPointerUp={() => {
               document.body.classList.remove("resizing-sidebar");
