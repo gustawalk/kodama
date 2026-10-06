@@ -4,7 +4,7 @@ Kodama is a local-first desktop HTTP client for saving, organizing, and running
 REST requests. It uses a React web interface in a Tauri 2 desktop window. HTTP
 requests and JavaScript scripts run in Rust, outside the WebView.
 
-![Kodama request workspace](assets/screenshots/workspace.png)
+![Kodama JSON request and bottom-docked response](assets/screenshots/workspace.png)
 
 The response can sit below the editor or on the right, and both layouts are resizable.
 
@@ -54,15 +54,16 @@ bun run tauri build
 
 ## Download desktop builds
 
-Open **Actions → Build desktop application** in the GitHub repository and select
-**Run workflow**. The workflow also runs when a `v*` tag is pushed. After both
-jobs finish, download **kodama-windows** (NSIS `.exe`) or **kodama-appimage**
-(`.AppImage`) from the run's **Artifacts** section. These builds are unsigned and
-are not published as GitHub Releases.
+Download the latest Windows NSIS installer (`.exe`), macOS disk image (`.dmg`),
+or Linux AppImage from [GitHub Releases](https://github.com/gustawalk/kodama/releases).
+Version tags trigger the release workflow, which publishes these downloads and
+an updater manifest with signed update artifacts. A manual run of **Actions →
+Build and release desktop application** creates temporary workflow artifacts
+without publishing a release.
 
 ## Features
 
-- Collections, folders, saved requests, tabs, search, duplication, pointer drag ordering with edge scrolling,
+- Collections, folders, saved requests, tabs, search, duplication, context-menu renaming, pointer drag ordering with edge scrolling,
   and expandable session history with URL, timestamp, size, and response access.
 - HTTP methods, `:id` path parameters, URL and query parameters, enabled headers, Basic and Bearer
   auth, JSON/text bodies, URL-encoded forms, and text multipart fields.
@@ -80,7 +81,8 @@ are not published as GitHub Releases.
   scrolling. Hover a suggestion or variable to see its value.
 - JSON is the default body mode for new requests. The body and script editors
   use CodeMirror for syntax highlighting, indentation with Tab, and JSON
-  diagnostics. Empty JSON bodies send no body. Use **Format JSON** to pretty-print.
+  diagnostics and selectable variable references. Empty JSON bodies send no body.
+  Use **Format JSON** to pretty-print.
 - Versioned Kodama JSON import/export with merge or replace. Imported scripts
   remain disabled until individually trusted.
 - Import common cURL commands and copy a saved request as cURL. Import OpenAPI
@@ -111,7 +113,8 @@ are not published as GitHub Releases.
 Kodama checks GitHub Releases for signed updates when the desktop app starts.
 Settings > General shows the installed version and lets you check again. A new
 version is installed only after you review its release notes and confirm.
-The release workflow builds signed Windows NSIS, macOS, and Linux AppImage
+Use **View patch notes** in Settings > General to revisit notes for this and earlier versions.
+The release workflow builds Windows NSIS, macOS, and Linux AppImage
 downloads, publishes `updater.json` with release notes, and deletes temporary
 workflow artifacts after publication. Configure the repository secrets
 `KODAMA_TAURI_SIGNING_PRIVATE_KEY` and
@@ -119,6 +122,39 @@ workflow artifacts after publication. Configure the repository secrets
 Keep the private key and password backed up outside the repository. Each tag
 needs matching versions in `package.json`, `src-tauri/Cargo.toml`, and
 `src-tauri/tauri.conf.json`, plus a `docs/releases/vX.Y.Z.md` notes file.
+The release workflow embeds the matching file from [docs/releases](docs/releases/README.md)
+in the updater manifest.
+
+## Patch notes
+
+<details open>
+<summary>Kodama 1.1.0</summary>
+
+- Rename collections from their right-click menu; double-clicking a collection no longer opens the rename dialog.
+- Select and edit text across variable references in JSON request bodies and scripts.
+- Start resizing the sidebar only when the pointer press begins on its divider.
+- Open the patch note history from Settings > General, with the newest version expanded and older versions collapsed.
+
+</details>
+
+<details>
+<summary>Kodama 1.0.0</summary>
+
+- Restore open request tabs, including pinned tabs, when Kodama starts again.
+- Check for signed updates from Settings > General or automatically at startup.
+- Review release notes and choose when to install an available update.
+- Refined the version panel and update prompt for clearer release information.
+
+</details>
+
+<details>
+<summary>Kodama 0.1.0</summary>
+
+- Added signed in-app update checks when Kodama opens and a manual check in Settings > General.
+- Updates now show release notes and require your confirmation before installation.
+- Open request tabs, including ordinary and pinned tabs, are restored after restarting Kodama.
+
+</details>
 
 ## Variables and scripts
 
@@ -209,8 +245,8 @@ WebSocket, cloud sync, Postman file compatibility, proxy settings, or multipart
 file attachments. The cookie jar and request history last for the app session.
 The script engine has
 operation/size limits but no hard wall-clock kill for every possible JavaScript
-expression. Native builds are verified on Linux; Windows and macOS builds
-require their respective hosts and Tauri prerequisites.
+expression. The release workflow builds on Windows, macOS, and Linux hosts.
+Local builds require the Tauri prerequisites for the current host.
 
 ## Development checks
 
