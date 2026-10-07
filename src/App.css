@@ -3005,3 +3005,21 @@ html[data-kodama-theme] .update-dialog [data-slot="alert-dialog-footer"] {
   border-radius: 50%;
   background: #ef7777;
 }
+.response-editor {
+  padding: 0;
+  min-height: 0;
+}
+.response-editor .cm-editor {
+  height: 100%;
+  background: transparent;
+}
+.response-editor .cm-scroller {
+  font-family: "JetBrains Mono", monospace;
+  overflow: auto;
+}
+.response-editor .cm-content {
+  padding: 19px 29px;
+}
+.response-editor .cm-focused {
+  outline: none;
+}

@@ -54,6 +54,7 @@ import { importOpenApi, type OpenApiRequestNames, type OpenApiScheme } from "./o
 import { bundleOpenApiRefs } from "./openapiRefs";
 import { previewRequestUrl } from "./requestPreview";
 import { releaseNotes } from "./releaseNotes";
+import { ResponseBody, findResponseMatches } from "./ResponseBody";
 import { parseOpenApiSource, type SourceFile } from "./sourceParser";
 import { syncCollectionSource, type SyncSummary } from "./sourceSync";
 import { savedTheme, themeGroups, themes, type ThemeId } from "./themes";
@@ -323,6 +324,9 @@ function App() {
   const [ready, setReady] = useState(false);
   const [saved, setSaved] = useState(true);
   const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    if (ready || loadError) document.getElementById("startup")?.remove();
+  }, [ready, loadError]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tabs, setTabs] = useState<string[]>([]);
   const tabSessionsRef = useRef<Record<string, TabSession>>(
@@ -810,15 +814,6 @@ function App() {
         : response.body;
     }
   }, [response]);
-  const responseIsJson = useMemo(() => {
-    if (!response || response.binary) return false;
-    try {
-      JSON.parse(response.body);
-      return true;
-    } catch {
-      return false;
-    }
-  }, [response]);
   const responseContentType =
     response?.headers.find(([key]) => key.toLowerCase() === "content-type")?.[1] ??
     "Unknown content type";
@@ -826,72 +821,14 @@ function App() {
     !!response &&
     (/text\/html|application\/xhtml\+xml/i.test(responseContentType) ||
       /^\s*(?:<!doctype\s+html|<html\b)/i.test(response.body));
-  const responseMatches = responseSearch
-    ? responseBody.toLowerCase().split(responseSearch.toLowerCase()).length - 1
-    : 0;
+  const responseMatchPositions = useMemo(
+    () => findResponseMatches(responseBody, responseSearch),
+    [responseBody, responseSearch],
+  );
+  const responseMatches = responseMatchPositions.length;
   useEffect(() => {
     setActiveResponseMatch(0);
   }, [responseSearch, responseBody]);
-  useEffect(() => {
-    if (!responseSearch || !responseMatches) return;
-    workbenchRef.current
-      ?.querySelectorAll(".response-body mark")
-      [activeResponseMatch]?.scrollIntoView({ block: "nearest" });
-  }, [activeResponseMatch, responseMatches, responseSearch, responseView]);
-  const highlightedResponse = () => {
-    const tokens: { from: number; to: number; kind: string }[] = [];
-    if (responseIsJson) {
-      const pattern =
-        /("(?:\\.|[^"\\])*")(?=\s*:)|("(?:\\.|[^"\\])*")|(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)|(\b(?:true|false|null)\b)/g;
-      for (const match of responseBody.matchAll(pattern)) {
-        const from = match.index ?? 0;
-        const kind = match[1] ? "key" : match[2] ? "string" : match[3] ? "number" : "literal";
-        tokens.push({ from, to: from + match[0].length, kind });
-      }
-    }
-    let rangeId = 0;
-    const renderRange = (start: number, end: number): React.ReactNode[] => {
-      const parts: React.ReactNode[] = [];
-      let cursor = start;
-      const currentRange = rangeId++;
-      tokens.forEach((token, index) => {
-        const from = Math.max(cursor, start, token.from);
-        const to = Math.min(end, token.to);
-        if (from >= to) return;
-        if (cursor < from) parts.push(responseBody.slice(cursor, from));
-        parts.push(
-          <span key={`json-${currentRange}-${index}`} className={`response-json-${token.kind}`}>
-            {responseBody.slice(from, to)}
-          </span>,
-        );
-        cursor = to;
-      });
-      if (cursor < end) parts.push(responseBody.slice(cursor, end));
-      return parts;
-    };
-    if (!responseSearch) return renderRange(0, responseBody.length);
-    const parts: React.ReactNode[] = [];
-    const lower = responseBody.toLowerCase();
-    const needle = responseSearch.toLowerCase();
-    let index = 0;
-    let matchIndex = 0;
-    while (index < responseBody.length) {
-      const found = lower.indexOf(needle, index);
-      if (found < 0) {
-        parts.push(...renderRange(index, responseBody.length));
-        break;
-      }
-      parts.push(...renderRange(index, found));
-      parts.push(
-        <mark key={found} className={matchIndex === activeResponseMatch ? "active" : ""}>
-          {renderRange(found, found + needle.length)}
-        </mark>,
-      );
-      matchIndex++;
-      index = found + needle.length;
-    }
-    return parts;
-  };
 
   const editStore = (change: (next: Store) => void) =>
     setStore((previous) => {
@@ -2433,7 +2370,8 @@ function App() {
               </div>
             )}
             <div className="sidebar-footer">
-              <span className="online-dot"></span> {activeWorkspace.name} <span>v0.1</span>
+              <span className="online-dot"></span> {activeWorkspace.name}{" "}
+              <span>v{updater.currentVersion}</span>
             </div>
           </aside>
           <div
@@ -3160,7 +3098,12 @@ function App() {
                           </a>
                         </div>
                       ) : (
-                        <pre className="response-body">{highlightedResponse()}</pre>
+                        <ResponseBody
+                          body={responseBody}
+                          query={responseSearch}
+                          matches={responseMatchPositions}
+                          activeMatch={activeResponseMatch}
+                        />
                       )
                     ) : (
                       <div className="response-headers">

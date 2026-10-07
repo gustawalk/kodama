@@ -1,2 +1,59 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="theme-color" content="#11151b" /><link rel="icon" type="image/svg+xml" href="/icon.svg" /><title>Kodama — REST workspace</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171c23" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <title>Kodama — REST workspace</title>
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        min-height: 100%;
+        background: #171c23;
+      }
+      #startup {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        background: #171c23;
+        z-index: 9999;
+      }
+      #startup img {
+        width: 56px;
+        height: 56px;
+        animation: startup-pulse 1.8s ease-in-out infinite;
+      }
+      @keyframes startup-pulse {
+        0%,
+        100% {
+          opacity: 0.4;
+          transform: scale(0.94);
+        }
+        50% {
+          opacity: 0.7;
+          transform: scale(1.06);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #startup img {
+          animation: none;
+        }
+      }
+      #startup[hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="startup" role="status" aria-label="Loading Kodama">
+      <img src="/icon.svg" alt="" />
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
