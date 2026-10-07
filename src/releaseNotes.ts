@@ -1,3 +1,4 @@
+import v120 from "../docs/releases/v1.2.0.md?raw";
 import v110 from "../docs/releases/v1.1.0.md?raw";
 import v100 from "../docs/releases/v1.0.0.md?raw";
 import v010 from "../docs/releases/v0.1.0.md?raw";
@@ -10,4 +11,4 @@ const parseNotes = (source: string) => {
   };
 };
 
-export const releaseNotes = [v110, v100, v010].map(parseNotes);
+export const releaseNotes = [v120, v110, v100, v010].map(parseNotes);

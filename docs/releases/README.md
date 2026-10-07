@@ -1,6 +1,15 @@
 # Patch notes
 
 <details open>
+<summary>Kodama 1.2.0</summary>
+
+- Show the installed app version in the sidebar.
+- Show a pulsing Kodama logo while the workspace loads.
+- Keep response search usable with responses over 100,000 lines.
+
+</details>
+
+<details>
 <summary>Kodama 1.1.0</summary>
 
 - Rename collections from their right-click menu; double-clicking a collection no longer opens the rename dialog.
