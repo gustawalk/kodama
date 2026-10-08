@@ -6,7 +6,7 @@
   "identifier": "com.walk.kodama",
   "build": {
     "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:1421",
+    "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },
