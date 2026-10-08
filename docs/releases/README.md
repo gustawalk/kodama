@@ -1,6 +1,14 @@
 # Patch notes
 
 <details open>
+<summary>Kodama 1.3.0</summary>
+
+- Rename, remove, or duplicate the selected request with F2, Delete, and Ctrl/Cmd+D.
+- Restyle the environments, authorization, and collection dropdowns to follow the active theme, with brighter hover states and a checkmark on the selected option.
+
+</details>
+
+<details>
 <summary>Kodama 1.2.0</summary>
 
 - Show the installed app version in the sidebar.
