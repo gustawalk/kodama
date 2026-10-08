@@ -106,7 +106,8 @@ without publishing a release.
 - Local autosave, light/dark themes, saved folder expansion per workspace, and
   request tabs that reopen after a restart with their order and active tab.
   Pinned tabs also reopen; closing a pinned tab removes its pin. Press
-  Ctrl/Cmd+Enter to send and Ctrl/Cmd+S to save.
+  Ctrl/Cmd+Enter to send and Ctrl/Cmd+S to save. With a request selected,
+  F2 renames it, Delete removes it, and Ctrl/Cmd+D duplicates it.
 
 ## Updates and releases
 
