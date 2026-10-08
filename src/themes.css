@@ -488,6 +488,7 @@ html[data-kodama-theme] {
 [data-slot="alert-dialog-content"],
 .environment-menu,
 .method-menu,
+.styled-select-menu,
 [data-slot="tooltip-content"] {
   --bg: var(--kd-bg);
   --panel: var(--kd-panel);

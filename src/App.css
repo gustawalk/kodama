@@ -303,24 +303,52 @@ select {
   color: var(--text);
   background-color: var(--input);
   appearance: none;
-  padding-right: 28px;
+  height: 34px;
+  border-radius: 7px;
+  padding: 0 30px 0 11px;
+  font-size: 12.5px;
+  line-height: 1;
+  cursor: pointer;
   background-image:
     linear-gradient(45deg, transparent 50%, var(--muted) 50%),
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position:
-    calc(100% - 13px) 50%,
-    calc(100% - 9px) 50%;
-  background-size: 4px 4px;
+    calc(100% - 17px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 5px 5px;
   background-repeat: no-repeat;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+select:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background-color: color-mix(in srgb, var(--input) 70%, var(--hover));
+}
+select:active {
+  background-color: var(--hover);
+}
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 select option {
   color: var(--text);
   background: var(--panel);
+  font-size: 13px;
+}
+select option:checked {
+  background: var(--accent-bg);
+  color: var(--text);
 }
 input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
+}
+select:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 input::placeholder,
 textarea::placeholder {
@@ -1098,6 +1126,93 @@ html:not(.dark) .request-link {
 .environment-menu-item [data-radix-select-item-indicator] {
   color: var(--accent);
 }
+.styled-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 35px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--input);
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.styled-select-trigger:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background-color: color-mix(in srgb, var(--input) 70%, var(--hover));
+}
+.styled-select-trigger[data-state="open"] {
+  background-color: var(--hover);
+  border-color: var(--accent);
+}
+.styled-select-trigger[data-placeholder] {
+  color: var(--muted);
+}
+.styled-select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.styled-select-trigger > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.styled-select-chevron {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.styled-select-trigger[data-state="open"] .styled-select-chevron {
+  transform: rotate(180deg);
+}
+.styled-select-menu {
+  z-index: 200;
+  min-width: var(--radix-select-trigger-width);
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 14px 35px #0008;
+}
+.styled-select-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 33px;
+  padding: 0 9px;
+  border-radius: 5px;
+  outline: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+.styled-select-item[data-state="checked"] {
+  background: var(--hover);
+}
+.styled-select-item[data-highlighted],
+.styled-select-item[data-highlighted][data-state="checked"] {
+  background: color-mix(in srgb, var(--accent) 22%, var(--hover));
+}
+.styled-select-item [data-radix-select-item-indicator] {
+  display: inline-flex;
+  color: var(--accent);
+}
 .tab-pin {
   flex: none;
   color: #b7a3ff;
@@ -1490,11 +1605,9 @@ html:not(.dark) .request-link {
   font-size: 11px;
   color: var(--muted);
 }
-.auth-editor select,
-.auth-editor input,
-.sidebar-body > select {
+.auth-editor input {
   height: 35px;
-  border-radius: 6px;
+  border-radius: 7px;
   padding: 0 9px;
   width: 100%;
 }
@@ -2311,11 +2424,8 @@ html:not(.dark) .response-json-literal {
   color: var(--muted);
   font-size: 11px;
 }
-.settings-pane > select {
-  width: 100%;
+.settings-pane > .styled-select-trigger {
   height: 36px;
-  padding: 0 9px;
-  border-radius: 6px;
 }
 .system-card {
   gap: 14px;

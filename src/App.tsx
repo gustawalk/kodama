@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { VariableField, type ResolvedVariable } from "./VariableField";
+import { StyledSelect } from "./StyledSelect";
 import { moveSiblingFolder, reorderSiblingFolder } from "./folderOrder";
 import { variableHasValue, variableInspectorEntries } from "./variableResolution";
 import { exportCurl, importCurl } from "./curl";
@@ -2098,22 +2099,20 @@ function App() {
                     ＋
                   </button>
                 </div>
-                <select
-                  aria-label="Active environment"
+                <StyledSelect
+                  ariaLabel="Active environment"
                   value={store.activeEnvironmentId ?? ""}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     editStore((next) => {
-                      next.activeEnvironmentId = event.target.value || null;
+                      next.activeEnvironmentId = value || null;
                     })
                   }
-                >
-                  <option value="">No environment</option>
-                  {store.environments.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
+                  emptyItemLabel="No environment"
+                  options={store.environments.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                  }))}
+                />
                 {store.environments.map((item) => (
                   <div className="environment-card" key={item.id}>
                     <div className="environment-heading">
@@ -2705,19 +2704,21 @@ function App() {
                     )}
                     {panel === "auth" && (
                       <div className="auth-editor">
-                        <label>Authorization</label>
-                        <select
+                        <label htmlFor="auth-kind">Authorization</label>
+                        <StyledSelect
+                          id="auth-kind"
                           value={request.auth.kind || "none"}
-                          onChange={(event) =>
+                          onChange={(value) =>
                             editRequest((next) => {
-                              next.auth.kind = event.target.value;
+                              next.auth.kind = value;
                             })
                           }
-                        >
-                          <option value="none">No auth</option>
-                          <option value="basic">Basic auth</option>
-                          <option value="bearer">Bearer token</option>
-                        </select>
+                          options={[
+                            { value: "none", label: "No auth" },
+                            { value: "basic", label: "Basic auth" },
+                            { value: "bearer", label: "Bearer token" },
+                          ]}
+                        />
                         {request.auth.kind === "basic" && (
                           <div className="auth-fields">
                             <input
@@ -3950,17 +3951,16 @@ function App() {
                         <label className="dialog-label" htmlFor="source-collection">
                           Collection
                         </label>
-                        <select
+                        <StyledSelect
                           id="source-collection"
                           value={configCollectionId ?? ""}
-                          onChange={(event) => setConfigCollectionId(event.target.value)}
-                        >
-                          {store.collections.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(value) => setConfigCollectionId(value || null)}
+                          placeholder="Select a collection…"
+                          options={store.collections.map((item) => ({
+                            value: item.id,
+                            label: item.name,
+                          }))}
+                        />
                         <div className="source-actions source-collection-actions">
                           <button
                             className="subtle"
