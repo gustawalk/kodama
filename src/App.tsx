@@ -1438,6 +1438,52 @@ function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   });
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (
+        renameDialog ||
+        deleteDialog ||
+        incoming ||
+        headerVariable ||
+        replaceSourceId ||
+        curlDialog ||
+        contextMenu ||
+        // An open Radix dropdown (method, environment, StyledSelect) should own the keyboard.
+        document.querySelector("[data-radix-select-viewport]")
+      )
+        return;
+      const target = selectedId ? findRequest(store, selectedId) : null;
+      if (!target) return;
+      const collectionId = target.collection.id;
+      const requestId = selectedId as string;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateRequestById(requestId, collectionId);
+        return;
+      }
+      const editable =
+        event.target instanceof HTMLElement &&
+        (event.target.isContentEditable ||
+          event.target.tagName === "INPUT" ||
+          event.target.tagName === "TEXTAREA" ||
+          event.target.tagName === "SELECT");
+      if (editable) return;
+      if (event.key === "F2") {
+        event.preventDefault();
+        rename(target.request.name, (name) =>
+          editCollection(collectionId, (next) => {
+            const found = next.requests.find((item) => item.id === requestId);
+            if (found) found.name = name;
+          }),
+        );
+      } else if (event.key === "Delete") {
+        event.preventDefault();
+        removeRequestById(requestId, collectionId);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
   async function importFile() {
     try {
       const data = await invoke<Store | null>("import_store");
