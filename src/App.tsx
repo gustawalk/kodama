@@ -802,19 +802,22 @@ function App() {
     ([, item]) => item.source !== "Random",
   );
   const randomInspectorVariables = visibleVariables.filter(([, item]) => item.source === "Random");
-  const responseBody = useMemo(() => {
-    if (!response || response.binary) return "";
+  const responseContent = useMemo(() => {
+    if (!response || response.binary) return { body: "", isJson: false };
     try {
-      return JSON.stringify(JSON.parse(response.body), null, 2);
+      return { body: JSON.stringify(JSON.parse(response.body), null, 2), isJson: true };
     } catch {
       const contentType =
         response.headers.find(([key]) => key.toLowerCase() === "content-type")?.[1] ?? "";
-      return /text\/html|application\/xhtml\+xml/i.test(contentType) ||
+      const body =
+        /text\/html|application\/xhtml\+xml/i.test(contentType) ||
         /^\s*(?:<!doctype\s+html|<html\b)/i.test(response.body)
-        ? response.body.replace(/>\s*</g, ">\n<").trim()
-        : response.body;
+          ? response.body.replace(/>\s*</g, ">\n<").trim()
+          : response.body;
+      return { body, isJson: false };
     }
   }, [response]);
+  const responseBody = responseContent.body;
   const responseContentType =
     response?.headers.find(([key]) => key.toLowerCase() === "content-type")?.[1] ??
     "Unknown content type";
@@ -3147,6 +3150,7 @@ function App() {
                       ) : (
                         <ResponseBody
                           body={responseBody}
+                          isJson={responseContent.isJson}
                           query={responseSearch}
                           matches={responseMatchPositions}
                           activeMatch={activeResponseMatch}
