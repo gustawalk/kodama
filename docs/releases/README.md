@@ -1,6 +1,13 @@
 # Patch notes
 
 <details open>
+<summary>Kodama 1.3.1</summary>
+
+- Restore syntax highlighting for JSON response bodies while keeping search responsive for large responses.
+
+</details>
+
+<details>
 <summary>Kodama 1.3.0</summary>
 
 - Rename, remove, or duplicate the selected request with F2, Delete, and Ctrl/Cmd+D.
