@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
-import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { Decoration, EditorView } from "@codemirror/view";
+import type { DecorationSet } from "@codemirror/view";
 import { json } from "@codemirror/lang-json";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -13,6 +14,18 @@ const responseJsonHighlight = syntaxHighlighting(
     { tag: [tags.bool, tags.null], class: "response-json-literal" },
   ]),
 );
+
+const setSearchDecorations = StateEffect.define<DecorationSet>();
+const searchDecorations = StateField.define({
+  create: () => Decoration.none,
+  update(decorations, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(setSearchDecorations)) decorations = effect.value;
+    }
+    return decorations;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 export function findResponseMatches(body: string, query: string): number[] {
   if (!query) return [];
@@ -52,6 +65,7 @@ export function ResponseBody({
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),
           EditorView.lineWrapping,
+          searchDecorations,
           ...(isJson ? [json(), responseJsonHighlight] : []),
         ],
       }),
@@ -67,9 +81,17 @@ export function ResponseBody({
   useEffect(() => {
     const editor = view.current;
     const from = matches[activeMatch];
-    if (!editor || from === undefined) return;
+    if (!editor) return;
+    const decorations = matches.map((match) =>
+      Decoration.mark({
+        class: match === from ? "response-search-match active" : "response-search-match",
+      }).range(match, match + query.length),
+    );
     editor.dispatch({
-      selection: { anchor: from, head: from + query.length },
+      effects: setSearchDecorations.of(Decoration.set(decorations)),
+    });
+    if (from === undefined) return;
+    editor.dispatch({
       effects: EditorView.scrollIntoView(from, { y: "center" }),
     });
   }, [query, matches, activeMatch]);

@@ -280,11 +280,6 @@ html.dark .variable-field textarea.unresolved-variable-field {
   font-size: 11px;
   line-height: 1.5;
 }
-.response-body mark {
-  background: #f5d66a;
-  color: #27231a;
-  border-radius: 2px;
-}
 button {
   border: 0;
   background: none;
@@ -957,15 +952,12 @@ html:not(.dark) .request-link {
 .response-dock-button {
   margin-left: 3px;
 }
-.response-body mark {
-  background: #6b557e;
-  color: white;
+.response-search-match {
+  background: color-mix(in srgb, var(--kd-accent) 12%, var(--kd-panel));
   border-radius: 2px;
 }
-.response-body mark.active {
-  background: #c39a39;
-  color: #211b10;
-  outline: 1px solid #e6be5b;
+.response-search-match.active {
+  background: color-mix(in srgb, var(--kd-accent) 42%, var(--kd-panel));
 }
 .loading-icon {
   animation: kodama-spin 1.25s linear infinite;

@@ -3040,6 +3040,15 @@ function App() {
                         placeholder="Find in response"
                         value={responseSearch}
                         onChange={(event) => setResponseSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" || !responseMatches) return;
+                          event.preventDefault();
+                          setActiveResponseMatch((index) =>
+                            event.shiftKey
+                              ? (index + responseMatches - 1) % responseMatches
+                              : (index + 1) % responseMatches,
+                          );
+                        }}
                       />
                       <span>
                         {responseSearch
