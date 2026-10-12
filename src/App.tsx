@@ -48,6 +48,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { VariableField, type ResolvedVariable } from "./VariableField";
 import { StyledSelect } from "./StyledSelect";
+import { SocketWorkbench } from "./SocketWorkbench";
 import { moveSiblingFolder, reorderSiblingFolder } from "./folderOrder";
 import { variableHasValue, variableInspectorEntries } from "./variableResolution";
 import { exportCurl, importCurl } from "./curl";
@@ -76,6 +77,7 @@ import {
   entry,
   newCollection,
   newRequest,
+  newSocketRequest,
   uid,
   variable,
 } from "./types";
@@ -100,6 +102,7 @@ type PointerDrag =
   | { kind: "folder"; folderId: string; collectionId: string }
   | { kind: "tab"; requestId: string };
 type ContextMenuState =
+  | { kind: "new_request"; x: number; y: number; collectionId: string; folderId: string | null }
   | { kind: "request"; x: number; y: number; requestId: string; collectionId: string }
   | { kind: "tab"; x: number; y: number; requestId: string }
   | { kind: "collection"; x: number; y: number; collectionId: string }
@@ -760,7 +763,7 @@ function App() {
           requests: item.name.toLowerCase().includes(search.toLowerCase())
             ? item.requests
             : item.requests.filter((value) =>
-                `${value.name} ${value.method} ${value.url}`
+                `${value.name} ${value.kind === "websocket" ? "WS WebSocket" : value.kind === "socketio" ? "Socket.IO" : value.method} ${value.url}`
                   .toLowerCase()
                   .includes(search.toLowerCase()),
               ),
@@ -889,8 +892,13 @@ function App() {
     setRenameValue(original);
     setRenameDialog({ name: original, apply });
   };
-  const addRequest = (collectionId: string, folderId: string | null = null) => {
-    const item = newRequest("New request", folderId);
+  const addRequest = (
+    collectionId: string,
+    folderId: string | null = null,
+    kind: "http" | "websocket" | "socketio" = "http",
+  ) => {
+    const item =
+      kind === "http" ? newRequest("New request", folderId) : newSocketRequest(kind, folderId);
     editCollection(collectionId, (next) => {
       next.requests.push(item);
     });
@@ -1354,7 +1362,15 @@ function App() {
   };
 
   async function send() {
-    if (!request || !collection || busy || switchingWorkspace) return;
+    if (
+      !request ||
+      request.kind === "websocket" ||
+      request.kind === "socketio" ||
+      !collection ||
+      busy ||
+      switchingWorkspace
+    )
+      return;
     const requestId = request.id;
     const sendGeneration = sendGenerationRef.current[requestId] ?? 0;
     setBusy(true);
@@ -1430,6 +1446,7 @@ function App() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        if (request?.kind === "websocket" || request?.kind === "socketio") return;
         event.preventDefault();
         void send();
       }
@@ -1960,8 +1977,14 @@ function App() {
                         onClick={() => open(value.id)}
                         onContextMenu={(event) => showRequestMenu(event, value.id, item.id)}
                       >
-                        <span className={`method ${value.method.toLowerCase()}`}>
-                          {value.method}
+                        <span
+                          className={`method ${value.kind === "websocket" ? "ws" : value.kind === "socketio" ? "sio" : value.method.toLowerCase()}`}
+                        >
+                          {value.kind === "websocket"
+                            ? "WS"
+                            : value.kind === "socketio"
+                              ? "S.IO"
+                              : value.method}
                         </span>
                         <span>{value.name}</span>
                       </button>
@@ -2015,9 +2038,15 @@ function App() {
                           <button
                             className="icon"
                             title="New request in folder"
-                            onClick={() => {
-                              addRequest(item.id, folder.id);
-                              expandNodes(item.id, folder.id);
+                            onClick={(event) => {
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              setContextMenu({
+                                kind: "new_request",
+                                x: rect.left,
+                                y: rect.bottom,
+                                collectionId: item.id,
+                                folderId: folder.id,
+                              });
                             }}
                           >
                             ＋
@@ -2088,9 +2117,15 @@ function App() {
                         <button
                           className="icon"
                           title="New request"
-                          onClick={() => {
-                            addRequest(item.id);
-                            expandNodes(item.id);
+                          onClick={(event) => {
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setContextMenu({
+                              kind: "new_request",
+                              x: rect.left,
+                              y: rect.bottom,
+                              collectionId: item.id,
+                              folderId: null,
+                            });
                           }}
                         >
                           ＋
@@ -2478,7 +2513,15 @@ function App() {
                       {pinnedTabs.includes(id) && (
                         <Pin size={12} className="tab-pin" aria-hidden="true" />
                       )}
-                      <span className={`method ${item.method.toLowerCase()}`}>{item.method}</span>
+                      <span
+                        className={`method ${item.kind === "websocket" ? "ws" : item.kind === "socketio" ? "sio" : item.method.toLowerCase()}`}
+                      >
+                        {item.kind === "websocket"
+                          ? "WS"
+                          : item.kind === "socketio"
+                            ? "S.IO"
+                            : item.method}
+                      </span>
                       <span className="tab-name">{item.name}</span>
                       {!saved && selectedId === id && <span className="unsaved-dot">•</span>}
                       <span
@@ -2542,7 +2585,36 @@ function App() {
                 </SelectPrimitive.Portal>
               </SelectPrimitive.Root>
             </div>
-            {request && collection ? (
+            {tabs.map((id) => {
+              const found = findRequest(store, id);
+              if (
+                !found ||
+                (found.request.kind !== "websocket" && found.request.kind !== "socketio")
+              )
+                return null;
+              return (
+                <SocketWorkbench
+                  key={id}
+                  request={found.request}
+                  collection={found.collection}
+                  defaults={store.defaults}
+                  environmentVariables={environment?.variables ?? []}
+                  runtimeVariables={runtime}
+                  variables={id === selectedId ? resolvedVariables : {}}
+                  active={id === selectedId}
+                  onChange={(change) =>
+                    editCollection(found.collection.id, (next) => {
+                      const target = next.requests.find((item) => item.id === id);
+                      if (target) change(target);
+                    })
+                  }
+                />
+              );
+            })}
+            {request &&
+            collection &&
+            request.kind !== "websocket" &&
+            request.kind !== "socketio" ? (
               <div
                 ref={workbenchRef}
                 className={`workbench dock-${responseDock}`}
@@ -3202,7 +3274,7 @@ function App() {
                   )}
                 </section>
               </div>
-            ) : (
+            ) : !request ? (
               <div className="welcome">
                 <img src="/icon.svg" alt="" />
                 <h1>Your API workspace</h1>
@@ -3218,7 +3290,7 @@ function App() {
                   New collection
                 </button>
               </div>
-            )}
+            ) : null}
           </main>
         </div>
         {contextMenu && (
@@ -3230,7 +3302,33 @@ function App() {
             onPointerDown={(event) => event.stopPropagation()}
             onContextMenu={(event) => event.preventDefault()}
           >
-            {contextMenu.kind === "request" ? (
+            {contextMenu.kind === "new_request" ? (
+              <>
+                <div className="context-menu-label">New request</div>
+                {(
+                  [
+                    ["http", "HTTP request"],
+                    ["websocket", "WebSocket"],
+                    ["socketio", "Socket.IO"],
+                  ] as const
+                ).map(([kind, label]) => (
+                  <button
+                    key={kind}
+                    role="menuitem"
+                    onClick={() => {
+                      addRequest(contextMenu.collectionId, contextMenu.folderId, kind);
+                      expandNodes(
+                        contextMenu.collectionId,
+                        ...(contextMenu.folderId ? [contextMenu.folderId] : []),
+                      );
+                      setContextMenu(null);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </>
+            ) : contextMenu.kind === "request" ? (
               (() => {
                 const target = findRequest(store, contextMenu.requestId);
                 if (!target) return null;
@@ -3275,19 +3373,21 @@ function App() {
                     >
                       Open in tab
                     </button>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        const curl = exportCurl(target.request);
-                        void navigator.clipboard
-                          .writeText(curl)
-                          .then(() => toast.success("cURL copied"))
-                          .catch(() => toast.error("Could not copy cURL"));
-                        setContextMenu(null);
-                      }}
-                    >
-                      Copy cURL
-                    </button>
+                    {target.request.kind !== "websocket" && target.request.kind !== "socketio" && (
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          const curl = exportCurl(target.request);
+                          void navigator.clipboard
+                            .writeText(curl)
+                            .then(() => toast.success("cURL copied"))
+                            .catch(() => toast.error("Could not copy cURL"));
+                          setContextMenu(null);
+                        }}
+                      >
+                        Copy cURL
+                      </button>
+                    )}
                     <div className="context-menu-separator" />
                     <button
                       role="menuitem"

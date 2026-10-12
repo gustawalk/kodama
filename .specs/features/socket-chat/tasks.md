@@ -50,7 +50,7 @@ T1 → T2 → T3
 **Requirement**: SOCK-02
 **Tests**: Build and manual UI check against the demo.
 **Gate**: Build
-**Status**: Pending
+**Status**: Complete
 
 ### T3: Demo chat and sample collection
 

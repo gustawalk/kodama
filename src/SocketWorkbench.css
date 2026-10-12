@@ -1,0 +1,251 @@
+.socket-workbench {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  padding: 23px 29px;
+  gap: 18px;
+}
+.socket-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.socket-heading .request-title {
+  display: block;
+  width: min(470px, 50vw);
+}
+.socket-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.socket-status > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.socket-status.connected > span {
+  background: #40bf85;
+  box-shadow: 0 0 0 4px #40bf8525;
+}
+.socket-status.connecting > span {
+  background: #e7a745;
+}
+.socket-urlbar {
+  display: flex;
+  align-items: stretch;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input);
+}
+.socket-urlbar .variable-field {
+  min-width: 0;
+}
+.socket-urlbar input {
+  height: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0 12px;
+  font:
+    12px ui-monospace,
+    monospace;
+}
+.socket-urlbar .send {
+  border-radius: 0 7px 7px 0;
+  white-space: nowrap;
+}
+.socket-protocol {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-right: 1px solid var(--line);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.socket-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(350px, 1.1fr);
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+}
+.socket-compose,
+.socket-log {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+.socket-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+.socket-section-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.socket-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.socket-compose .variable-field > input,
+.socket-compose .variable-field > textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input);
+  color: var(--text);
+  padding: 9px 10px;
+  font-size: 12px;
+}
+.socket-compose .variable-field > textarea {
+  min-height: 125px;
+  resize: vertical;
+  font-family: ui-monospace, monospace;
+}
+.socket-compose-actions,
+.socket-format {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.socket-format {
+  color: var(--muted);
+  font-size: 11px;
+}
+.socket-compose-actions .send {
+  padding: 9px 14px;
+}
+.socket-compose-actions .send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.socket-settings-toggle {
+  text-align: left;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  padding: 4px 0;
+  font-size: 12px;
+}
+.socket-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.socket-settings .hint {
+  margin: 0;
+}
+.socket-header-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.socket-header-row .variable-field {
+  min-width: 0;
+}
+.socket-header-row .variable-field input {
+  min-width: 0;
+}
+.socket-log {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.socket-log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.socket-log-toolbar strong {
+  font-size: 13px;
+}
+.socket-log-toolbar strong span {
+  color: var(--muted);
+  font-weight: 400;
+}
+.socket-log-toolbar > div {
+  display: flex;
+  gap: 5px;
+}
+.socket-events {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 15px 20px;
+}
+.socket-event {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.socket-event > div {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: 11px;
+}
+.socket-event time {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.socket-event strong {
+  font-size: 12px;
+}
+.socket-event-kind {
+  color: var(--muted);
+  min-width: 68px;
+}
+.socket-event.received .socket-event-kind {
+  color: #39ae82;
+}
+.socket-event.sent .socket-event-kind {
+  color: var(--accent);
+}
+.socket-event.error .socket-event-kind {
+  color: #e07777;
+}
+.socket-event pre {
+  margin: 8px 0 0 79px;
+  font:
+    12px/1.5 ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.socket-empty {
+  padding: 40px 15px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 960px) {
+  .socket-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(270px, auto) minmax(300px, 1fr);
+    overflow: auto;
+  }
+  .socket-compose {
+    max-height: 420px;
+  }
+}

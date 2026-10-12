@@ -805,6 +805,10 @@ body.resizing-sidebar {
 .method.delete {
   color: var(--kd-delete);
 }
+.method.ws,
+.method.sio {
+  color: var(--accent);
+}
 html:not(.dark) .request-link {
   font-weight: 500;
 }

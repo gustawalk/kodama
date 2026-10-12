@@ -66,7 +66,7 @@ Kodama saves and runs HTTP requests, but users need a repeatable way to inspect 
 
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
-| SOCK-01 | Save and use a socket request | Native transport | Implementing |
+| SOCK-01 | Save and use a socket request | Native transport | Verified |
 | SOCK-02 | Save and use a socket request | UI | Implementing |
 | SOCK-03 | Try both protocols locally | Demo | Implementing |
 
