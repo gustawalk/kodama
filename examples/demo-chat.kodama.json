@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "defaults": [],
+  "collections": [
+    {
+      "id": "8f0a8a7c-9d83-4b47-b883-000000000001",
+      "name": "Demo chat",
+      "variables": [],
+      "folders": [],
+      "requests": [
+        {
+          "id": "8f0a8a7c-9d83-4b47-b883-000000000002",
+          "name": "Chat via WebSocket",
+          "method": "GET",
+          "kind": "websocket",
+          "url": "ws://127.0.0.1:8787/chat/ws",
+          "folderId": null,
+          "query": [],
+          "pathParams": [],
+          "headers": [],
+          "auth": {
+            "kind": "none",
+            "username": "",
+            "password": "",
+            "token": ""
+          },
+          "body": {
+            "kind": "none",
+            "text": "",
+            "fields": []
+          },
+          "preScript": "",
+          "postScript": "",
+          "trusted": true,
+          "timeoutMs": null,
+          "socket": {
+            "path": "/socket.io/",
+            "namespace": "/chat",
+            "auth": "",
+            "event": "message",
+            "payload": "{\"name\":\"You\",\"text\":\"Hello from Kodama!\"}",
+            "format": "json"
+          }
+        },
+        {
+          "id": "8f0a8a7c-9d83-4b47-b883-000000000003",
+          "name": "Chat via Socket.IO",
+          "method": "GET",
+          "kind": "socketio",
+          "url": "http://127.0.0.1:8787",
+          "folderId": null,
+          "query": [],
+          "pathParams": [],
+          "headers": [],
+          "auth": {
+            "kind": "none",
+            "username": "",
+            "password": "",
+            "token": ""
+          },
+          "body": {
+            "kind": "none",
+            "text": "",
+            "fields": []
+          },
+          "preScript": "",
+          "postScript": "",
+          "trusted": true,
+          "timeoutMs": null,
+          "socket": {
+            "path": "/socket.io/",
+            "namespace": "/chat",
+            "auth": "",
+            "event": "chat:send",
+            "payload": "{\"name\":\"You\",\"text\":\"Hello from Kodama!\"}",
+            "format": "json"
+          }
+        }
+      ]
+    }
+  ],
+  "environments": [],
+  "activeEnvironmentId": null
+}

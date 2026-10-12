@@ -1,7 +1,7 @@
 # Socket Chat Tasks
 
 **Design**: `.specs/features/socket-chat/design.md`
-**Status**: In Progress
+**Status**: Done
 
 ## Test Coverage Matrix
 
@@ -60,4 +60,4 @@ T1 → T2 → T3
 **Requirement**: SOCK-03
 **Tests**: Protocol integration test with both clients and malformed message.
 **Gate**: Full
-**Status**: Pending
+**Status**: Complete

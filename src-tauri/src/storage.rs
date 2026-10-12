@@ -345,6 +345,16 @@ mod tests {
     use crate::model::{Collection, Environment, Variable};
 
     #[test]
+    fn demo_chat_collection_is_importable() {
+        let store: Store =
+            serde_json::from_str(include_str!("../../examples/demo-chat.kodama.json")).unwrap();
+        validate(&store).unwrap();
+        assert_eq!(store.collections[0].requests.len(), 2);
+        assert_eq!(store.collections[0].requests[0].kind, "websocket");
+        assert_eq!(store.collections[0].requests[1].kind, "socketio");
+    }
+
+    #[test]
     fn legacy_store_becomes_first_workspace_without_losing_data() {
         let path = std::env::temp_dir().join(format!("kodama-migrate-{}.json", Uuid::new_v4()));
         let mut store = Store::default();

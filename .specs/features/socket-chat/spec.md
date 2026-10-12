@@ -67,13 +67,13 @@ Kodama saves and runs HTTP requests, but users need a repeatable way to inspect 
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
 | SOCK-01 | Save and use a socket request | Native transport | Verified |
-| SOCK-02 | Save and use a socket request | UI | Implementing |
-| SOCK-03 | Try both protocols locally | Demo | Implementing |
+| SOCK-02 | Save and use a socket request | UI | Verified |
+| SOCK-03 | Try both protocols locally | Demo | Verified |
 
 **Coverage:** 3 total, 3 mapped to tasks, 0 unmapped.
 
 ## Success Criteria
 
-- [ ] Both saved protocols connect and exchange messages with the demo.
-- [ ] Invalid JSON and bad connections surface readable errors.
-- [ ] Existing HTTP requests and workspaces still load and run.
+- [x] Both saved protocols connect and exchange messages with the demo.
+- [x] Invalid JSON and bad connections surface readable errors.
+- [x] Existing HTTP requests and workspaces still load and run.

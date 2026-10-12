@@ -1,5 +1,6 @@
 // Run with: bun examples/demo-server.js
 // Accounts and tokens live only in memory and reset when this process stops.
+import { createChatModule } from "./chat.js";
 const TOKEN_LIFETIME_SECONDS = 900;
 const ALLOWED_STATUSES = new Set([200, 201, 400, 404, 418, 500]);
 
@@ -151,8 +152,29 @@ export function createDemoApi() {
   };
 }
 
+export function createDemoServer(port = 8787) {
+  const api = createDemoApi();
+  const chat = createChatModule();
+  const server = Bun.serve({
+    hostname: "127.0.0.1", port, idleTimeout: 30,
+    fetch(request, server) {
+      const path = new URL(request.url).pathname;
+      if (path === "/socket.io/") return chat.engine.handleRequest(request, server);
+      if (path === "/chat/ws") {
+        if (server.upgrade(request, { data: { kind: "raw-chat" } })) return;
+        return new Response("WebSocket upgrade required", { status: 426 });
+      }
+      return api(request);
+    },
+    websocket: chat.websocket,
+  });
+  return { server, chat };
+}
+
 if (import.meta.main) {
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 8787, fetch: createDemoApi() });
+  const { server } = createDemoServer();
   console.log(`Kodama demo API: ${server.url}`);
   console.log(`OpenAPI: ${server.url}openapi.json`);
+  console.log(`WebSocket chat: ws://127.0.0.1:8787/chat/ws`);
+  console.log(`Socket.IO chat: http://127.0.0.1:8787 (namespace /chat)`);
 }

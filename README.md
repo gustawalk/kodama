@@ -46,6 +46,15 @@ that script once, then run Login. Protected routes import with Bearer
 and reset on restart. No demo requests or account data are written to disk by
 the example server.
 
+To try live sockets, import [demo-chat.kodama.json](examples/demo-chat.kodama.json)
+from **Settings → Import & export** and choose **Merge**. It adds two saved chat
+requests. Open either one, click **Connect**, then **Send message**. Open the
+other request in another tab to see messages move between WebSocket and
+Socket.IO. You can also open another Kodama window. The WebSocket endpoint is
+`ws://127.0.0.1:8787/chat/ws`; the Socket.IO server is
+`http://127.0.0.1:8787` with namespace `/chat` and event `chat:send`.
+The chat runs only in server memory and accepts `{ "name": "You", "text": "Hello" }`.
+
 For a production build on the current host:
 
 ```sh
@@ -67,6 +76,10 @@ without publishing a release.
   and expandable session history with URL, timestamp, size, and response access.
 - HTTP methods, `:id` path parameters, URL and query parameters, enabled headers, Basic and Bearer
   auth, JSON/text bodies, URL-encoded forms, and text multipart fields.
+- Saved WebSocket and Socket.IO requests with live connection status, JSON or text
+  messages, a timestamped event log, headers, auth, Socket.IO path and namespace,
+  and message examples. Each open tab keeps its connection until you disconnect
+  or close the tab. Socket messages support the same `{{...}}` variables as HTTP.
 - Response status, headers, formatted JSON/text, timing, size, and binary
   download. Dock the resizable response below or beside the editor, navigate search matches,
   copy response text, and inspect session cookies.
