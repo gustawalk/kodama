@@ -139,7 +139,7 @@ fn resolve_path_params(
     Ok(result)
 }
 
-fn apply_scope(target: &mut HashMap<String, String>, variables: &[Variable]) {
+pub(crate) fn apply_scope(target: &mut HashMap<String, String>, variables: &[Variable]) {
     for item in variables {
         if !item.name.trim().is_empty() {
             target.insert(item.name.clone(), item.value.clone());
@@ -182,7 +182,7 @@ fn interpolate(
     Ok(output)
 }
 
-fn interpolate_at(
+pub(crate) fn interpolate_at(
     input: &str,
     variables: &HashMap<String, String>,
     runtime: &HashMap<String, String>,
@@ -191,7 +191,7 @@ fn interpolate_at(
     interpolate(input, variables, runtime).map_err(|error| format!("{error}\nUsed in: {field}"))
 }
 
-fn resolve_entries(
+pub(crate) fn resolve_entries(
     entries: &[Entry],
     vars: &HashMap<String, String>,
     runtime: &HashMap<String, String>,
@@ -597,6 +597,8 @@ mod tests {
             id: uuid::Uuid::new_v4().to_string(),
             name: name.into(),
             method: method.into(),
+            kind: String::new(),
+            socket: None,
             url: format!("http://127.0.0.1:{port}{path}"),
             folder_id: None,
             query: vec![],
@@ -672,6 +674,8 @@ mod tests {
                 id: uuid::Uuid::new_v4().to_string(),
                 name: path.into(),
                 method: "GET".into(),
+                kind: String::new(),
+                socket: None,
                 url: format!("http://127.0.0.1:{port}/{path}"),
                 folder_id: None,
                 query: vec![],

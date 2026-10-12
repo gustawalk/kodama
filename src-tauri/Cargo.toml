@@ -33,6 +33,9 @@ tauri-plugin-dialog = "2"
 base64 = "0.22"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+rust_socketio = { version = "0.6", features = ["async"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

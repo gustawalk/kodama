@@ -477,6 +477,8 @@ mod tests {
             id: Uuid::new_v4().to_string(),
             name: "Login".into(),
             method: "POST".into(),
+            kind: String::new(),
+            socket: None,
             url: "{{BASE_URL}}/login/:id".into(),
             folder_id: None,
             query: vec![],

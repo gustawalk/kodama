@@ -55,10 +55,38 @@ pub struct Body {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SocketSettings {
+    #[serde(default = "socket_path")]
+    pub path: String,
+    #[serde(default = "socket_namespace")]
+    pub namespace: String,
+    #[serde(default)]
+    pub auth: String,
+    #[serde(default)]
+    pub event: String,
+    #[serde(default)]
+    pub payload: String,
+    #[serde(default)]
+    pub format: String,
+}
+
+fn socket_path() -> String {
+    "/socket.io/".into()
+}
+fn socket_namespace() -> String {
+    "/".into()
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiRequest {
     pub id: String,
     pub name: String,
     pub method: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub socket: Option<SocketSettings>,
     pub url: String,
     #[serde(default)]
     pub folder_id: Option<String>,

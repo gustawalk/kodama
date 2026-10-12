@@ -1,6 +1,7 @@
 mod engine;
 mod model;
 mod script;
+mod socket;
 mod storage;
 
 use model::{RunInput, RunResult};
@@ -89,6 +90,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(ActiveRequests::default())
         .manage(SessionCookies::default())
+        .manage(socket::SocketManager::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -97,6 +99,9 @@ pub fn run() {
             cancel_request,
             get_cookies,
             clear_cookies,
+            socket::connect_socket,
+            socket::send_socket,
+            socket::disconnect_socket,
             storage::load_workspaces,
             storage::save_workspaces,
             storage::import_store,

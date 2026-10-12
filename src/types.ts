@@ -17,10 +17,20 @@ export type Auth = {
   token: string;
 };
 export type Body = { kind: string; text: string; fields: Entry[] };
+export type SocketSettings = {
+  path: string;
+  namespace: string;
+  auth: string;
+  event: string;
+  payload: string;
+  format: "text" | "json";
+};
 export type ApiRequest = {
   id: string;
   name: string;
   method: string;
+  kind?: "http" | "websocket" | "socketio";
+  socket?: SocketSettings;
   url: string;
   folderId: string | null;
   query: Entry[];
@@ -105,6 +115,7 @@ export const newRequest = (name = "New request", folderId: string | null = null)
   id: uid(),
   name,
   method: "GET",
+  kind: "http",
   url: "",
   folderId,
   query: [],
@@ -116,6 +127,21 @@ export const newRequest = (name = "New request", folderId: string | null = null)
   postScript: "",
   trusted: true,
   timeoutMs: null,
+});
+export const newSocketRequest = (
+  kind: "websocket" | "socketio",
+  folderId: string | null = null,
+): ApiRequest => ({
+  ...newRequest(kind === "websocket" ? "New WebSocket" : "New Socket.IO", folderId),
+  kind,
+  socket: {
+    path: "/socket.io/",
+    namespace: "/",
+    auth: "",
+    event: "message",
+    payload: "",
+    format: "json",
+  },
 });
 export const newCollection = (name = "New collection"): Collection => ({
   id: uid(),

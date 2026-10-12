@@ -78,6 +78,8 @@ mod tests {
             id: "id".into(),
             name: "Login".into(),
             method: "POST".into(),
+            kind: String::new(),
+            socket: None,
             url: "https://example.test".into(),
             folder_id: None,
             query: vec![],
