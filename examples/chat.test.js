@@ -14,20 +14,28 @@ const waitFor = (subscribe, timeout = 3000) =>
 test("WebSocket and Socket.IO clients share the demo chat, with clear errors", async () => {
   const { server, chat } = createDemoServer(0);
   const ws = new WebSocket(`ws://127.0.0.1:${server.port}/chat/ws`);
+  const secondWs = new WebSocket(`ws://127.0.0.1:${server.port}/chat/ws`);
   const socket = io(`http://127.0.0.1:${server.port}/chat`, {
     transports: ["websocket"],
     reconnection: false,
   });
   try {
-    const welcome = await waitFor((done) =>
+    const firstWelcome = waitFor((done) =>
       ws.addEventListener("message", (event) => done(JSON.parse(event.data)), { once: true }),
     );
-    expect(welcome.type).toBe("welcome");
+    const secondWelcome = waitFor((done) =>
+      secondWs.addEventListener("message", (event) => done(JSON.parse(event.data)), { once: true }),
+    );
+    expect((await firstWelcome).type).toBe("welcome");
+    expect((await secondWelcome).type).toBe("welcome");
     await waitFor((done) => socket.once("connect", done));
     const fromSocketIo = waitFor((done) =>
       ws.addEventListener("message", (event) => done(JSON.parse(event.data)), { once: true }),
     );
     const ownEcho = waitFor((done) => socket.once("chat:message", done));
+    const secondWebSocketEcho = waitFor((done) =>
+      secondWs.addEventListener("message", (event) => done(JSON.parse(event.data)), { once: true }),
+    );
     socket.emit("chat:send", { name: "Ada", text: "Hello from Socket.IO" });
     expect(await fromSocketIo).toMatchObject({
       type: "message",
@@ -35,6 +43,11 @@ test("WebSocket and Socket.IO clients share the demo chat, with clear errors", a
       text: "Hello from Socket.IO",
     });
     expect(await ownEcho).toMatchObject({ name: "Ada", text: "Hello from Socket.IO" });
+    expect(await secondWebSocketEcho).toMatchObject({
+      type: "message",
+      name: "Ada",
+      text: "Hello from Socket.IO",
+    });
     const fromWebSocket = waitFor((done) => socket.once("chat:message", done));
     const ownWebSocketEcho = waitFor((done) =>
       ws.addEventListener("message", (event) => done(JSON.parse(event.data)), { once: true }),
@@ -59,6 +72,7 @@ test("WebSocket and Socket.IO clients share the demo chat, with clear errors", a
     });
   } finally {
     ws.close();
+    secondWs.close();
     socket.disconnect();
     await chat.io.close();
     server.stop(true);
