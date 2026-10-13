@@ -242,10 +242,10 @@
 @media (max-width: 960px) {
   .socket-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(270px, auto) minmax(300px, 1fr);
+    grid-template-rows: minmax(320px, auto) minmax(240px, 1fr);
     overflow: auto;
   }
   .socket-compose {
-    max-height: 420px;
+    max-height: 480px;
   }
 }

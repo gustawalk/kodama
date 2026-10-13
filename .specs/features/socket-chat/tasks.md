@@ -27,7 +27,7 @@
 ### Phase 1: Socket feature
 
 ```
-T1 → T2 → T3
+T1 → T2 → T3 → T4
 ```
 
 ## Task Breakdown
@@ -60,4 +60,14 @@ T1 → T2 → T3
 **Requirement**: SOCK-03
 **Tests**: Protocol integration test with both clients and malformed message.
 **Gate**: Full
+**Status**: Complete
+
+### T4: Keep Socket.IO settings visible at a standard desktop width
+
+**What**: Balance the composer and event log so the connection settings control stays in view.
+**Where**: `src/SocketWorkbench.css`
+**Depends on**: T3
+**Requirement**: SOCK-02
+**Tests**: Desktop visual check at 952 × 1028 and frontend build.
+**Gate**: Build
 **Status**: Complete
