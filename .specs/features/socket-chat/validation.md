@@ -2,7 +2,7 @@
 
 **Date**: 2026-10-12
 **Spec**: `.specs/features/socket-chat/spec.md`
-**Diff range**: `817619f..b70d6df`
+**Diff range**: `817619f..1e046bf`
 **Verifier**: independent coverage and sensor agents; author merged the findings
 
 ## Validation: Socket Chat - PASS ✅
@@ -36,6 +36,7 @@ The sensor used isolated `/tmp` copies and left the repository unchanged. `bun t
 ## Gates and Desktop Check
 
 - `bun run build` and `bun run format:check`: passed.
+- Socket payload editor reuses `src/CodeEditor.tsx` with JSON mode, matching the REST editor's indentation, bracket pairing, syntax feedback, and variable completion; frontend build and format check passed after this follow-up.
 - `cargo test --offline`: 17 passed, 0 failed.
 - `bun test examples/chat.test.js examples/demo-server.test.js`: 5 passed, 0 failed, 134 assertions.
 - `validate_spec.py` and `validate_tasks.py`: 0 errors, 0 warnings.
