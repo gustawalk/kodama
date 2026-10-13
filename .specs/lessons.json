@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 2,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "surviving_mutant::when a broadcast must reach every subscriber test with at least two subscribers and assert delivery to each",
+      "text": "When a broadcast must reach every subscriber, test with at least two subscribers and assert delivery to each.",
+      "signal": "surviving_mutant",
+      "scope": "examples/chat.test.js",
+      "status": "confirmed",
+      "features": [
+        "socket-chat"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "examples/chat.test.js:36 (examples/chat.test.js)"
+      ],
+      "created": "2026-10-13T00:07:12Z",
+      "last_seen": "2026-10-13T00:07:12Z"
+    }
+  ]
+}
