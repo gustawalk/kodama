@@ -68,6 +68,18 @@ pub struct SocketSettings {
     pub payload: String,
     #[serde(default)]
     pub format: String,
+    #[serde(default)]
+    pub examples: Vec<SocketMessageExample>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SocketMessageExample {
+    pub id: String,
+    pub name: String,
+    pub event: String,
+    pub payload: String,
+    pub format: String,
 }
 
 fn socket_path() -> String {

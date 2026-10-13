@@ -50,7 +50,8 @@ To try live sockets, import [demo-chat.kodama.json](examples/demo-chat.kodama.js
 from **Settings → Import & export** and choose **Merge**. It adds two saved chat
 requests. Open either one, click **Connect**, then **Send message**. Open the
 other request in another tab to see messages move between WebSocket and
-Socket.IO. You can also open another Kodama window. The WebSocket endpoint is
+Socket.IO. Use **Load saved message** to try the included chat examples, or
+edit a payload and save your own named example. You can also open another Kodama window. The WebSocket endpoint is
 `ws://127.0.0.1:8787/chat/ws`; the Socket.IO server is
 `http://127.0.0.1:8787` with namespace `/chat` and event `chat:send`.
 The chat runs only in server memory and accepts `{ "name": "You", "text": "Hello" }`.

@@ -95,6 +95,31 @@
   font-size: 13px;
   font-weight: 700;
 }
+.socket-examples,
+.socket-example-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.socket-examples .styled-select-trigger {
+  flex: 1;
+  min-width: 0;
+}
+.socket-example-save input {
+  flex: 1;
+  min-width: 0;
+  height: 31px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input);
+  color: var(--text);
+  padding: 0 9px;
+  font-size: 12px;
+}
+.socket-example-save button {
+  white-space: nowrap;
+}
 .socket-field {
   display: flex;
   flex-direction: column;
@@ -136,6 +161,7 @@
   cursor: default;
 }
 .socket-settings-toggle {
+  order: -2;
   text-align: left;
   border: 0;
   background: none;
@@ -144,6 +170,7 @@
   font-size: 12px;
 }
 .socket-settings {
+  order: -1;
   display: flex;
   flex-direction: column;
   gap: 10px;

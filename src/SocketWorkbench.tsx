@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
-import type { ApiRequest, Collection, Entry, SocketSettings, Variable } from "./types";
+import type {
+  ApiRequest,
+  Collection,
+  Entry,
+  SocketMessageExample,
+  SocketSettings,
+  Variable,
+} from "./types";
 import { entry, uid } from "./types";
 import { VariableField, type ResolvedVariable } from "./VariableField";
 import { StyledSelect } from "./StyledSelect";
@@ -45,6 +52,8 @@ export function SocketWorkbench({
   const [buffered, setBuffered] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [selectedExampleId, setSelectedExampleId] = useState("");
+  const [exampleName, setExampleName] = useState("");
   const session = useRef<string | null>(null);
   const pausedRef = useRef(false);
   const buffer = useRef<LiveEvent[]>([]);
@@ -58,6 +67,7 @@ export function SocketWorkbench({
     format: "json",
   };
   const isIo = request.kind === "socketio";
+  const examples = socket.examples ?? [];
   const input = () => ({
     request,
     defaults,
@@ -106,6 +116,52 @@ export function SocketWorkbench({
     onChange((next) => {
       next.socket = { ...socket, [field]: value } as SocketSettings;
     });
+  const loadExample = (id: string) => {
+    const example = examples.find((item) => item.id === id);
+    if (!example) return;
+    setSelectedExampleId(id);
+    setExampleName(example.name);
+    onChange((next) => {
+      next.socket = {
+        ...socket,
+        event: example.event,
+        payload: example.payload,
+        format: example.format,
+      };
+    });
+  };
+  const saveExample = () => {
+    const name = exampleName.trim() || `Message ${examples.length + 1}`;
+    const example: SocketMessageExample = {
+      id: selectedExampleId || uid(),
+      name,
+      event: socket.event,
+      payload: socket.payload,
+      format: socket.format,
+    };
+    onChange((next) => {
+      next.socket = {
+        ...socket,
+        examples: selectedExampleId
+          ? examples.map((item) => (item.id === selectedExampleId ? example : item))
+          : [...examples, example],
+      };
+    });
+    setSelectedExampleId(example.id);
+    setExampleName(name);
+    toast.success(selectedExampleId ? "Message example updated" : "Message example saved");
+  };
+  const deleteExample = () => {
+    if (!selectedExampleId) return;
+    onChange((next) => {
+      next.socket = {
+        ...socket,
+        examples: examples.filter((item) => item.id !== selectedExampleId),
+      };
+    });
+    setSelectedExampleId("");
+    setExampleName("");
+  };
   const setHeader = (rows: Entry[]) =>
     onChange((next) => {
       next.headers = rows;
@@ -205,6 +261,40 @@ export function SocketWorkbench({
       <div className="socket-layout">
         <div className="socket-compose">
           <div className="socket-section-title">Send message</div>
+          <div className="socket-examples">
+            <StyledSelect
+              value={selectedExampleId}
+              onChange={loadExample}
+              options={examples.map((item) => ({ value: item.id, label: item.name }))}
+              placeholder="Load saved message"
+              ariaLabel="Saved message examples"
+            />
+            <button
+              className="subtle small"
+              onClick={() => {
+                setSelectedExampleId("");
+                setExampleName("");
+              }}
+            >
+              New
+            </button>
+          </div>
+          <div className="socket-example-save">
+            <input
+              aria-label="Message example name"
+              placeholder="Example name"
+              value={exampleName}
+              onChange={(event) => setExampleName(event.target.value)}
+            />
+            <button className="subtle small" onClick={saveExample}>
+              {selectedExampleId ? "Update" : "Save example"}
+            </button>
+            {selectedExampleId && (
+              <button className="subtle small" onClick={deleteExample}>
+                Delete
+              </button>
+            )}
+          </div>
           {isIo && (
             <label className="socket-field">
               Event name

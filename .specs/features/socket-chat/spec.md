@@ -40,6 +40,7 @@ Kodama saves and runs HTTP requests, but users need a repeatable way to inspect 
 2. WHEN a user opens a saved socket request THEN Kodama SHALL show controls to connect, disconnect, and send a message.
 3. WHEN a socket receives an event THEN Kodama SHALL append its timestamp, event name, and payload to the live log.
 4. WHEN a user closes a connected socket tab THEN Kodama SHALL disconnect that tab's connection.
+5. WHEN a user saves a named message example THEN Kodama SHALL keep its event, format, and payload with the request and load them back into the composer when selected.
 
 **Independent Test**: Create and save each protocol, connect, send, and reopen the request.
 

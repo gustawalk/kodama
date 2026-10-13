@@ -27,7 +27,7 @@
 ### Phase 1: Socket feature
 
 ```
-T1 → T2 → T3 → T4
+T1 → T2 → T3 → T4 → T5 → T6
 ```
 
 ## Task Breakdown
@@ -70,4 +70,24 @@ T1 → T2 → T3 → T4
 **Requirement**: SOCK-02
 **Tests**: Desktop visual check at 952 × 1028 and frontend build.
 **Gate**: Build
+**Status**: Complete
+
+### T5: Saved message examples
+
+**What**: Save multiple named message payloads per socket request and include two in each chat sample.
+**Where**: `src/SocketWorkbench.tsx`
+**Depends on**: T4
+**Requirement**: SOCK-02
+**Tests**: Fixture import assertion and frontend build.
+**Gate**: Build
+**Status**: Complete
+
+### T6: Verify chat fan-out
+
+**What**: Assert Socket.IO messages reach two connected WebSocket clients.
+**Where**: `examples/chat.test.js`
+**Depends on**: T5
+**Requirement**: SOCK-03
+**Tests**: Demo chat integration test.
+**Gate**: Full
 **Status**: Complete

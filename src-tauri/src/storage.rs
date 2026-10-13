@@ -48,6 +48,11 @@ fn validate(store: &Store) -> Result<(), String> {
         }
         for request in &collection.requests {
             add(&request.id)?;
+            if let Some(socket) = &request.socket {
+                for example in &socket.examples {
+                    add(&example.id)?;
+                }
+            }
             for entry in request
                 .query
                 .iter()
@@ -352,6 +357,8 @@ mod tests {
         assert_eq!(store.collections[0].requests.len(), 2);
         assert_eq!(store.collections[0].requests[0].kind, "websocket");
         assert_eq!(store.collections[0].requests[1].kind, "socketio");
+        assert_eq!(store.collections[0].requests[0].socket.as_ref().unwrap().examples.len(), 2);
+        assert_eq!(store.collections[0].requests[1].socket.as_ref().unwrap().examples.len(), 2);
     }
 
     #[test]

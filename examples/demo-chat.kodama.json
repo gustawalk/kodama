@@ -39,7 +39,11 @@
             "auth": "",
             "event": "message",
             "payload": "{\"name\":\"You\",\"text\":\"Hello from Kodama!\"}",
-            "format": "json"
+            "format": "json",
+            "examples": [
+              { "id": "8f0a8a7c-9d83-4b47-b883-000000000004", "name": "Say hello", "event": "message", "payload": "{\"name\":\"You\",\"text\":\"Hello from Kodama!\"}", "format": "json" },
+              { "id": "8f0a8a7c-9d83-4b47-b883-000000000005", "name": "Ask a question", "event": "message", "payload": "{\"name\":\"You\",\"text\":\"How is the chat going?\"}", "format": "json" }
+            ]
           }
         },
         {
@@ -73,7 +77,11 @@
             "auth": "",
             "event": "chat:send",
             "payload": "{\"name\":\"You\",\"text\":\"Hello from Kodama!\"}",
-            "format": "json"
+            "format": "json",
+            "examples": [
+              { "id": "8f0a8a7c-9d83-4b47-b883-000000000006", "name": "Say hello", "event": "chat:send", "payload": "{\"name\":\"You\",\"text\":\"Hello from Kodama!\"}", "format": "json" },
+              { "id": "8f0a8a7c-9d83-4b47-b883-000000000007", "name": "Ask a question", "event": "chat:send", "payload": "{\"name\":\"You\",\"text\":\"How is the chat going?\"}", "format": "json" }
+            ]
           }
         }
       ]

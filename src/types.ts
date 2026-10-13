@@ -17,6 +17,13 @@ export type Auth = {
   token: string;
 };
 export type Body = { kind: string; text: string; fields: Entry[] };
+export type SocketMessageExample = {
+  id: string;
+  name: string;
+  event: string;
+  payload: string;
+  format: "text" | "json";
+};
 export type SocketSettings = {
   path: string;
   namespace: string;
@@ -24,6 +31,7 @@ export type SocketSettings = {
   event: string;
   payload: string;
   format: "text" | "json";
+  examples?: SocketMessageExample[];
 };
 export type ApiRequest = {
   id: string;
