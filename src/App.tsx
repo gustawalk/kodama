@@ -2601,6 +2601,7 @@ function App() {
                   environmentVariables={environment?.variables ?? []}
                   runtimeVariables={runtime}
                   variables={id === selectedId ? resolvedVariables : {}}
+                  theme={themes[theme].mode}
                   active={id === selectedId}
                   onChange={(change) =>
                     editCollection(found.collection.id, (next) => {

@@ -142,6 +142,22 @@
   resize: vertical;
   font-family: ui-monospace, monospace;
 }
+.socket-message-editor {
+  flex: 1;
+  min-height: 180px;
+  display: flex;
+}
+.socket-message-editor > * {
+  flex: 1;
+  min-width: 0;
+}
+.socket-message-editor .code-editor.large {
+  min-height: 0;
+  width: 100%;
+}
+.socket-message-editor .cm-editor {
+  font-family: ui-monospace, monospace;
+}
 .socket-compose-actions,
 .socket-format {
   display: flex;

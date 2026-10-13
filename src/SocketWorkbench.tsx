@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
@@ -15,6 +15,10 @@ import { VariableField, type ResolvedVariable } from "./VariableField";
 import { StyledSelect } from "./StyledSelect";
 import "./SocketWorkbench.css";
 
+const CodeEditor = lazy(() =>
+  import("./CodeEditor").then((module) => ({ default: module.CodeEditor })),
+);
+
 type LiveEvent = { id: string; at: string; kind: string; event: string; payload: string };
 type WireEvent = { sessionId: string; kind: string; event: string; payload: string };
 type Props = {
@@ -24,6 +28,7 @@ type Props = {
   environmentVariables: Variable[];
   runtimeVariables: Record<string, string>;
   variables: Record<string, ResolvedVariable>;
+  theme: "dark" | "light";
   active: boolean;
   onChange: (change: (request: ApiRequest) => void) => void;
 };
@@ -43,6 +48,7 @@ export function SocketWorkbench({
   environmentVariables,
   runtimeVariables,
   variables,
+  theme,
   active,
   onChange,
 }: Props) {
@@ -318,14 +324,19 @@ export function SocketWorkbench({
               ]}
             />
           </div>
-          <VariableField
-            label="Message payload"
-            variables={variables}
-            value={socket.payload}
-            placeholder={socket.format === "json" ? '{"text":"Hello!"}' : "Hello!"}
-            multiline
-            onChange={(value) => setSocket("payload", value)}
-          />
+          <div className="socket-message-editor">
+            <Suspense fallback={<div className="code-editor-loading">Loading editor…</div>}>
+              <CodeEditor
+                label="Message payload"
+                large
+                variables={variables}
+                theme={theme}
+                language={socket.format === "json" ? "json" : "text"}
+                value={socket.payload}
+                onChange={(value) => setSocket("payload", value)}
+              />
+            </Suspense>
+          </div>
           <div className="socket-compose-actions">
             {socket.format === "json" && (
               <button
