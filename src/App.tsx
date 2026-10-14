@@ -92,6 +92,8 @@ const emptyRequestTabResult = (): RequestTabResult => ({
   cookieText: "",
 });
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+const MAX_FORMATTED_RESPONSE_CHARS = 1_000_000;
+const MAX_RESPONSE_SEARCH_MATCHES = 1000;
 const CodeEditor = lazy(() =>
   import("./CodeEditor").then((module) => ({ default: module.CodeEditor })),
 );
@@ -109,10 +111,14 @@ type ContextMenuState =
   | { kind: "folder"; x: number; y: number; collectionId: string; folderId: string };
 const copy = <T,>(value: T): T => structuredClone(value);
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-const findRequest = (store: Store, id: string | null) =>
-  store.collections
-    .flatMap((collection) => collection.requests.map((request) => ({ collection, request })))
-    .find((item) => item.request.id === id);
+const findRequest = (store: Store, id: string | null) => {
+  if (!id) return undefined;
+  for (const collection of store.collections) {
+    const request = collection.requests.find((item) => item.id === id);
+    if (request) return { collection, request };
+  }
+  return undefined;
+};
 const pathParamNames = (url: string) => [
   ...new Set(
     [...url.split(/[?#]/, 1)[0].matchAll(/\/:([A-Za-z_][\w]*)\b/g)].map((match) => match[1]),
@@ -807,6 +813,8 @@ function App() {
   const randomInspectorVariables = visibleVariables.filter(([, item]) => item.source === "Random");
   const responseContent = useMemo(() => {
     if (!response || response.binary) return { body: "", isJson: false };
+    if (response.body.length > MAX_FORMATTED_RESPONSE_CHARS)
+      return { body: response.body, isJson: false };
     try {
       return { body: JSON.stringify(JSON.parse(response.body), null, 2), isJson: true };
     } catch {
@@ -829,7 +837,7 @@ function App() {
     (/text\/html|application\/xhtml\+xml/i.test(responseContentType) ||
       /^\s*(?:<!doctype\s+html|<html\b)/i.test(response.body));
   const responseMatchPositions = useMemo(
-    () => findResponseMatches(responseBody, responseSearch),
+    () => findResponseMatches(responseBody, responseSearch, MAX_RESPONSE_SEARCH_MATCHES),
     [responseBody, responseSearch],
   );
   const responseMatches = responseMatchPositions.length;
@@ -844,15 +852,34 @@ function App() {
       return next;
     });
   const editCollection = (id: string, change: (next: Collection) => void) =>
-    editStore((next) => {
-      const target = next.collections.find((item) => item.id === id);
-      if (target) change(target);
+    setStore((previous) => {
+      const index = previous.collections.findIndex((item) => item.id === id);
+      if (index < 0) return previous;
+      const collections = [...previous.collections];
+      const target = copy(collections[index]);
+      change(target);
+      collections[index] = target;
+      return { ...previous, collections };
     });
   const editRequest = (change: (next: ApiRequest) => void) => {
     if (request) {
-      editStore((next) => {
-        const target = findRequest(next, request.id)?.request;
-        if (target) change(target);
+      const requestId = request.id;
+      setStore((previous) => {
+        const collectionIndex = previous.collections.findIndex((item) =>
+          item.requests.some((candidate) => candidate.id === requestId),
+        );
+        if (collectionIndex < 0) return previous;
+        const collection = previous.collections[collectionIndex];
+        const requestIndex = collection.requests.findIndex(
+          (candidate) => candidate.id === requestId,
+        );
+        const requests = [...collection.requests];
+        const target = copy(requests[requestIndex]);
+        change(target);
+        requests[requestIndex] = target;
+        const collections = [...previous.collections];
+        collections[collectionIndex] = { ...collection, requests };
+        return { ...previous, collections };
       });
     }
   };
@@ -3125,7 +3152,7 @@ function App() {
                       />
                       <span>
                         {responseSearch
-                          ? `${responseMatches ? activeResponseMatch + 1 : 0} / ${responseMatches}`
+                          ? `${responseMatches ? activeResponseMatch + 1 : 0} / ${responseMatches}${responseMatches === MAX_RESPONSE_SEARCH_MATCHES ? "+" : ""}`
                           : ""}
                       </span>
                       <button
@@ -3182,6 +3209,14 @@ function App() {
                       unknown API paths.
                     </div>
                   )}
+                  {response &&
+                    !response.binary &&
+                    responseView === "body" &&
+                    response.body.length > MAX_FORMATTED_RESPONSE_CHARS && (
+                      <div className="response-notice">
+                        Large response shown as plain text to keep the editor responsive.
+                      </div>
+                    )}
                   {error ? (
                     <div className="response-error">
                       <strong className="response-error-title">

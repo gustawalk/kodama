@@ -27,13 +27,13 @@ const searchDecorations = StateField.define({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-export function findResponseMatches(body: string, query: string): number[] {
+export function findResponseMatches(body: string, query: string, limit = Infinity): number[] {
   if (!query) return [];
   const matches: number[] = [];
   const haystack = body.toLowerCase();
   const needle = query.toLowerCase();
   let from = 0;
-  while ((from = haystack.indexOf(needle, from)) !== -1) {
+  while (matches.length < limit && (from = haystack.indexOf(needle, from)) !== -1) {
     matches.push(from);
     from += needle.length;
   }
