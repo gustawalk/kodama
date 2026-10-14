@@ -16,3 +16,10 @@
 5. `src-tauri/src/engine.rs:372` starts the displayed elapsed timer after client setup and request preparation; it stops before the post-response script. The shown time is narrower than user-perceived send-to-render latency.
 
 The probe source was temporary and removed after measurement. No product code changed during this audit.
+
+## Follow-up — 2026-10-14
+
+- The desktop session now reuses a `reqwest::Client` and its connection pool. Clearing cookies replaces both the jar and client; each request still sets its own timeout. The displayed elapsed time now starts before client acquisition and ends after response processing.
+- A temporary debug-build probe against the same local `/health` endpoint alternated 200 warm requests through a fresh client and 200 through a shared client. Fresh-client median/p95 was **11.074/12.687 ms**; shared-client median/p95 was **0.437/0.508 ms**. This measures the Rust request path, not Tauri IPC, frontend rendering, or remote server latency. The probe was removed afterward.
+- The socket event log now formats payloads on arrival, batches visible state updates into animation frames, and limits each retained payload to 16,384 characters and each queue to 500 events. Larger payloads show a truncation notice in the log. This bounds retained log memory, but the transport can still deliver a large message before the log truncates it.
+- Full HTTP response buffering, large-workspace cloning, and the socket backend's unbounded outbound queue remain candidates for later work. They need explicit product limits or workload measurements before changing behavior.
