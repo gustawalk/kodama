@@ -14,6 +14,8 @@ use std::{
 };
 use uuid::Uuid;
 
+const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
+
 fn random_value(name: &str) -> Result<String, String> {
     let id = Uuid::new_v4();
     let bytes = id.as_bytes();
@@ -300,6 +302,7 @@ pub async fn execute_with_client(input: RunInput, client: Client) -> Result<RunR
     append_query_pairs(&mut url, query)?;
     let method = Method::from_bytes(request.method.as_bytes())
         .map_err(|e| format!("Invalid HTTP method: {e}"))?;
+    let has_response_body = method != Method::HEAD;
     let timeout = request.timeout_ms.unwrap_or(30_000).clamp(100, 300_000);
     let mut headers = HeaderMap::new();
     for (key, value) in resolve_entries(&request.headers, &variables, &runtime, "header")? {
@@ -380,7 +383,7 @@ pub async fn execute_with_client(input: RunInput, client: Client) -> Result<RunR
         }
         _ => {}
     }
-    let response = builder.send().await.map_err(|e| {
+    let mut response = builder.send().await.map_err(|e| {
         let kind = if e.is_timeout() {
             "Request timed out"
         } else if e.is_connect() {
@@ -417,15 +420,35 @@ pub async fn execute_with_client(input: RunInput, client: Client) -> Result<RunR
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("<binary>").to_string()))
         .collect();
-    let bytes = response
-        .bytes()
+    let too_large = || {
+        format!(
+            "Response exceeds the 10 MiB preview limit\nURL: {response_url}\nUse a download tool for larger bodies."
+        )
+    };
+    if has_response_body
+        && status != reqwest::StatusCode::NOT_MODIFIED
+        && response
+            .content_length()
+            .is_some_and(|size| size > MAX_RESPONSE_BYTES as u64)
+    {
+        return Err(too_large());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|e| format!("Could not read response\nURL: {response_url}\nDetails: {e}"))?;
+        .map_err(|e| format!("Could not read response\nURL: {response_url}\nDetails: {e}"))?
+    {
+        if chunk.len() > MAX_RESPONSE_BYTES - bytes.len() {
+            return Err(too_large());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
     let size = bytes.len();
-    let (body, binary) = match String::from_utf8(bytes.to_vec()) {
+    let (body, binary) = match String::from_utf8(bytes) {
         Ok(text) => (text, false),
-        Err(_) => (
-            base64::engine::general_purpose::STANDARD.encode(&bytes),
+        Err(error) => (
+            base64::engine::general_purpose::STANDARD.encode(error.into_bytes()),
             true,
         ),
     };
