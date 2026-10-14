@@ -21,6 +21,8 @@ const CodeEditor = lazy(() =>
 
 type LiveEvent = { id: string; at: string; kind: string; event: string; payload: string };
 type WireEvent = { sessionId: string; kind: string; event: string; payload: string };
+const MAX_LOG_PAYLOAD = 16_384;
+const MAX_LOG_EVENTS = 500;
 type Props = {
   request: ApiRequest;
   collection: Collection;
@@ -33,9 +35,14 @@ type Props = {
   onChange: (change: (request: ApiRequest) => void) => void;
 };
 const failure = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const truncateLogPayload = (text: string) =>
+  text.length > MAX_LOG_PAYLOAD
+    ? `${text.slice(0, MAX_LOG_PAYLOAD)}\n… (event log truncated from ${text.length} characters)`
+    : text;
 const pretty = (text: string) => {
+  if (text.length > MAX_LOG_PAYLOAD) return truncateLogPayload(text);
   try {
-    return JSON.stringify(JSON.parse(text), null, 2);
+    return truncateLogPayload(JSON.stringify(JSON.parse(text), null, 2));
   } catch {
     return text;
   }
@@ -63,6 +70,8 @@ export function SocketWorkbench({
   const session = useRef<string | null>(null);
   const pausedRef = useRef(false);
   const buffer = useRef<LiveEvent[]>([]);
+  const pending = useRef<LiveEvent[]>([]);
+  const pendingFrame = useRef<number | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
   const socket = request.socket ?? {
     path: "/socket.io/",
@@ -81,12 +90,29 @@ export function SocketWorkbench({
     environmentVariables,
     runtimeVariables,
   });
+  const flushPending = () => {
+    pendingFrame.current = null;
+    const batch = pending.current;
+    pending.current = [];
+    if (batch.length) setEvents((previous) => [...previous, ...batch].slice(-MAX_LOG_EVENTS));
+  };
   const addEvent = (kind: string, event: string, payload: string) => {
-    const item = { id: uid(), at: new Date().toLocaleTimeString(), kind, event, payload };
+    const item = {
+      id: uid(),
+      at: new Date().toLocaleTimeString(),
+      kind,
+      event,
+      payload: pretty(payload),
+    };
     if (pausedRef.current) {
-      buffer.current = [...buffer.current, item].slice(-500);
+      buffer.current.push(item);
+      if (buffer.current.length > MAX_LOG_EVENTS) buffer.current.shift();
       setBuffered(buffer.current.length);
-    } else setEvents((previous) => [...previous, item].slice(-500));
+    } else {
+      pending.current.push(item);
+      if (pending.current.length > MAX_LOG_EVENTS) pending.current.shift();
+      if (pendingFrame.current === null) pendingFrame.current = requestAnimationFrame(flushPending);
+    }
   };
 
   useEffect(() => {
@@ -111,6 +137,8 @@ export function SocketWorkbench({
     return () => {
       disposed = true;
       unlisten?.();
+      if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
+      pending.current = [];
       if (session.current) void invoke("disconnect_socket", { sessionId: session.current });
     };
   }, []);
@@ -519,9 +547,14 @@ export function SocketWorkbench({
                 className="subtle small"
                 onClick={() => {
                   if (paused) {
-                    setEvents((previous) => [...previous, ...buffer.current].slice(-500));
+                    setEvents((previous) =>
+                      [...previous, ...buffer.current].slice(-MAX_LOG_EVENTS),
+                    );
                     buffer.current = [];
                     setBuffered(0);
+                  } else if (pendingFrame.current !== null) {
+                    cancelAnimationFrame(pendingFrame.current);
+                    flushPending();
                   }
                   pausedRef.current = !paused;
                   setPaused(!paused);
@@ -532,6 +565,9 @@ export function SocketWorkbench({
               <button
                 className="subtle small"
                 onClick={() => {
+                  if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
+                  pendingFrame.current = null;
+                  pending.current = [];
                   setEvents([]);
                   buffer.current = [];
                   setBuffered(0);
@@ -576,7 +612,7 @@ export function SocketWorkbench({
                     </span>
                     <strong>{item.event}</strong>
                   </div>
-                  {item.payload && <pre>{pretty(item.payload)}</pre>}
+                  {item.payload && <pre>{item.payload}</pre>}
                 </div>
               ))
             ) : (
