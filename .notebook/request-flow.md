@@ -1,7 +1,7 @@
 # Request execution and imports
 
 - `src/types.ts:newRequest()` defines frontend request defaults; `src-tauri/src/model.rs:ApiRequest` mirrors the saved JSON format. New fields need a serde default so old workspaces still load.
-- `src/App.tsx:send()` passes the active scopes and runtime values to `src-tauri/src/lib.rs:send_request()`, which calls `src-tauri/src/engine.rs:execute_with_jar()`.
+- `src/App.tsx:send()` passes the active scopes and runtime values to `src-tauri/src/lib.rs:send_request()`, which reuses a session client through `src-tauri/src/engine.rs:execute_with_client()`.
 - `src-tauri/src/engine.rs:interpolate()` resolves ordinary, runtime, and random templates. `resolve_path_params()` fills `:name` URL segments from saved path parameter rows before URL parsing.
 - Missing variable errors from `interpolate()` contain the bare variable name; `src/App.tsx` renders that name as a chip in the response error. `src/CodeEditor.tsx` styles complete `{{...}}` references with CodeMirror mark decorations, keeping their text selectable and editable in the JSON and script editors.
 - `src/requestPreview.ts:previewRequestUrl()` mirrors current variable, path parameter, and query values for the editor's read-only preview. It does not run pre-request scripts or generate random values.
