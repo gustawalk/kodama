@@ -1,8 +1,9 @@
 # Kodama
 
-Kodama is a local-first desktop HTTP client for saving, organizing, and running
-REST requests. It uses a React web interface in a Tauri 2 desktop window. HTTP
-requests and JavaScript scripts run in Rust, outside the WebView.
+Kodama is a local-first desktop API client for saving and running REST,
+WebSocket, and Socket.IO requests. It uses a React web interface in a Tauri 2
+desktop window. HTTP requests and JavaScript scripts run in Rust, outside the
+WebView.
 
 ![Kodama JSON request and bottom-docked response](assets/screenshots/workspace.png)
 
@@ -143,6 +144,17 @@ in the updater manifest.
 ## Patch notes
 
 <details open>
+<summary>Kodama 1.4.0</summary>
+
+- Save WebSocket and Socket.IO requests, connect, send JSON or text, and inspect timestamped events in a live log.
+- Save named socket message examples and edit JSON with the same editor used for REST requests.
+- Try both protocols with the included cross-protocol chat server and sample collection.
+- Send repeat REST requests faster through a reused HTTP client. Responses over 10 MiB now show a size-limit error to keep memory use bounded.
+- Keep busy socket sessions responsive with bounded send queues and event logs.
+
+</details>
+
+<details>
 <summary>Kodama 1.3.1</summary>
 
 - Restore syntax highlighting for JSON response bodies while keeping search responsive for large responses.
