@@ -249,7 +249,21 @@ pub async fn execute(input: RunInput) -> Result<RunResult, String> {
     execute_with_jar(input, Arc::new(Jar::default())).await
 }
 
+pub fn build_client(jar: Arc<Jar>) -> Result<Client, String> {
+    Client::builder()
+        .cookie_provider(jar)
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
 pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResult, String> {
+    execute_with_client(input, build_client(jar)?).await
+}
+
+pub async fn execute_with_client(input: RunInput, client: Client) -> Result<RunResult, String> {
+    let started = Instant::now();
     let mut variables = HashMap::new();
     apply_scope(&mut variables, &input.defaults);
     apply_scope(&mut variables, &input.collection_variables);
@@ -287,12 +301,6 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
     let method = Method::from_bytes(request.method.as_bytes())
         .map_err(|e| format!("Invalid HTTP method: {e}"))?;
     let timeout = request.timeout_ms.unwrap_or(30_000).clamp(100, 300_000);
-    let client = Client::builder()
-        .cookie_provider(jar)
-        .timeout(Duration::from_millis(timeout))
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .map_err(|e| e.to_string())?;
     let mut headers = HeaderMap::new();
     for (key, value) in resolve_entries(&request.headers, &variables, &runtime, "header")? {
         let name = HeaderName::from_bytes(key.as_bytes())
@@ -301,7 +309,10 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
             HeaderValue::from_str(&value).map_err(|e| format!("Invalid header value: {e}"))?;
         headers.append(name, value);
     }
-    let mut builder = client.request(method, url).headers(headers);
+    let mut builder = client
+        .request(method, url)
+        .headers(headers)
+        .timeout(Duration::from_millis(timeout));
     match request.auth.kind.as_str() {
         "basic" => {
             builder = builder.basic_auth(
@@ -369,7 +380,6 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         }
         _ => {}
     }
-    let started = Instant::now();
     let response = builder.send().await.map_err(|e| {
         let kind = if e.is_timeout() {
             "Request timed out"
@@ -411,7 +421,6 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         .bytes()
         .await
         .map_err(|e| format!("Could not read response\nURL: {response_url}\nDetails: {e}"))?;
-    let elapsed_ms = started.elapsed().as_millis();
     let size = bytes.len();
     let (body, binary) = match String::from_utf8(bytes.to_vec()) {
         Ok(text) => (text, false),
@@ -445,7 +454,7 @@ pub async fn execute_with_jar(input: RunInput, jar: Arc<Jar>) -> Result<RunResul
         body,
         binary,
         size,
-        elapsed_ms,
+        elapsed_ms: started.elapsed().as_millis(),
         runtime_variables: runtime,
     })
 }
