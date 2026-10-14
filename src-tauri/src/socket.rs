@@ -29,23 +29,41 @@ struct SocketEvent {
     payload: String,
 }
 
-fn emit(app: &AppHandle, session_id: &str, kind: &str, event: &str, payload: impl Into<String>) {
+fn emit(app: &AppHandle, session_id: &str, kind: &str, event: &str, payload: impl AsRef<str>) {
+    let payload = payload.as_ref();
+    let payload = if payload.len() > MAX_SOCKET_LOG_BYTES {
+        let end = (0..=MAX_SOCKET_LOG_BYTES)
+            .rev()
+            .find(|&index| payload.is_char_boundary(index))
+            .unwrap_or(0);
+        format!(
+            "{}\n… (event log truncated from {} bytes)",
+            &payload[..end],
+            payload.len()
+        )
+    } else {
+        payload.to_owned()
+    };
     let _ = app.emit(
         "socket-event",
         SocketEvent {
             session_id: session_id.into(),
             kind: kind.into(),
             event: event.into(),
-            payload: payload.into(),
+            payload,
         },
     );
 }
 
 enum SocketHandle {
     Connecting,
-    WebSocket(mpsc::UnboundedSender<Message>),
+    WebSocket(mpsc::Sender<Message>),
     SocketIo(IoClient),
 }
+
+const MAX_SOCKET_PAYLOAD_BYTES: usize = 256 * 1024;
+const WEBSOCKET_SEND_QUEUE_SIZE: usize = 32;
+const MAX_SOCKET_LOG_BYTES: usize = 16 * 1024 - 128;
 
 #[derive(Default, Clone)]
 pub struct SocketManager(Arc<Mutex<HashMap<String, SocketHandle>>>);
@@ -126,6 +144,9 @@ fn payload_text(input: &RunInput) -> Result<(String, serde_json::Value), String>
         &input.runtime_variables,
         "socket message",
     )?;
+    if text.len() > MAX_SOCKET_PAYLOAD_BYTES {
+        return Err("Socket message exceeds the 256 KiB send limit".into());
+    }
     let value = if socket.format == "json" {
         serde_json::from_str(&text).map_err(|e| format!("Invalid JSON message: {e}"))?
     } else {
@@ -187,7 +208,7 @@ pub async fn connect_socket(
             }
         };
         let (mut writer, mut reader) = stream.split();
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (sender, mut receiver) = mpsc::channel(WEBSOCKET_SEND_QUEUE_SIZE);
         let mut connections = manager.0.lock().await;
         if !matches!(connections.get(&session_id), Some(SocketHandle::Connecting)) {
             return Ok(());
@@ -210,8 +231,8 @@ pub async fn connect_socket(
                         None => { let _ = writer.send(Message::Close(None)).await; break; }
                     },
                     incoming = reader.next() => match incoming {
-                        Some(Ok(Message::Text(text))) => emit(&app, &session_id, "received", "message", text.to_string()),
-                        Some(Ok(Message::Binary(bytes))) => emit(&app, &session_id, "received", "binary", format!("{} bytes (base64): {}", bytes.len(), base64::engine::general_purpose::STANDARD.encode(bytes))),
+                        Some(Ok(Message::Text(text))) => emit(&app, &session_id, "received", "message", text.as_str()),
+                        Some(Ok(Message::Binary(bytes))) => emit(&app, &session_id, "received", "binary", format!("{} bytes (base64 preview): {}", bytes.len(), base64::engine::general_purpose::STANDARD.encode(&bytes[..bytes.len().min(12 * 1024)]))),
                         Some(Ok(Message::Close(frame))) => { emit(&app, &session_id, "status", "disconnected", frame.map(|value| value.reason.to_string()).unwrap_or_default()); break; },
                         Some(Err(error)) => { emit(&app, &session_id, "error", "connection", error.to_string()); break; },
                         None => break,
@@ -394,8 +415,13 @@ pub async fn send_socket(
     };
     match handle {
         SocketHandle::WebSocket(sender) => sender
-            .send(Message::Text(text.clone().into()))
-            .map_err(|_| "WebSocket is disconnected".to_string())?,
+            .try_send(Message::Text(text.clone().into()))
+            .map_err(|error| match error {
+                mpsc::error::TrySendError::Full(_) => {
+                    "WebSocket send queue is full. Wait for messages to drain.".to_string()
+                }
+                mpsc::error::TrySendError::Closed(_) => "WebSocket is disconnected".to_string(),
+            })?,
         SocketHandle::SocketIo(client) => {
             if event.is_empty() {
                 return Err("Enter a Socket.IO event name".into());
