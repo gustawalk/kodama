@@ -11,6 +11,10 @@ The response can sit below the editor or on the right, and both layouts are resi
 
 ![Kodama with a right-docked response](assets/screenshots/response-right.png)
 
+Test live WebSocket and Socket.IO events, save reusable messages, and schedule recurring events with an Auto tag in the log.
+
+![Kodama Socket.IO events and recurring messages](assets/screenshots/socket-events.png)
+
 ## Quick start
 
 Requirements: Bun, Rust, and the
@@ -49,13 +53,20 @@ the example server.
 
 To try live sockets, import [demo-chat.kodama.json](examples/demo-chat.kodama.json)
 from **Settings → Import & export** and choose **Merge**. It adds two saved chat
-requests. Open either one, click **Connect**, then **Send message**. Open the
+requests. Open either one, click **Connect**, then **Send event**. Open the
 other request in another tab to see messages move between WebSocket and
-Socket.IO. Use **Load saved message** to try the included chat examples, or
-edit a payload and save your own named example. You can also open another Kodama window. The WebSocket endpoint is
+Socket.IO. Use **Saved messages** to try the included chat examples. Use
+**Save as new** to name a new preset, or **Update** to replace the selected preset
+with your edits. You can also open another Kodama window. The WebSocket endpoint is
 `ws://127.0.0.1:8787/chat/ws`; the Socket.IO server is
 `http://127.0.0.1:8787` with namespace `/chat` and event `chat:send`.
 The chat runs only in server memory and accepts `{ "name": "You", "text": "Hello" }`.
+
+### Recurring socket messages
+
+Open **Auto sender** in a WebSocket or Socket.IO request and choose **Add recurring message**. Set a name, interval in seconds, and JSON or text payload; Socket.IO also takes an event name. Enable the message to start repeating after the first interval on each connection. Multiple schedules run independently, including while switching tabs or minimizing Kodama. Disconnecting or closing the tab stops them. A send error suspends that schedule until its settings change or you reconnect. Automatic entries in the event log show an **Auto** tag and the schedule name.
+
+Socket.IO **Auth JSON** uses the same code editor and variable suggestions as message payloads. For example, use `{"token":"{{TOKEN}}"}` to resolve a token when connecting.
 
 For a production build on the current host:
 
@@ -80,7 +91,7 @@ without publishing a release.
   auth, JSON/text bodies, URL-encoded forms, and text multipart fields.
 - Saved WebSocket and Socket.IO requests with live connection status, JSON or text
   messages, a timestamped event log, headers, auth, Socket.IO path and namespace,
-  and message examples. Each open tab keeps its connection until you disconnect
+  saved messages, and native recurring message schedules. Each open tab keeps its connection until you disconnect
   or close the tab. Socket messages support the same `{{...}}` variables as HTTP.
 - Response status, headers, formatted JSON/text, timing, size, and binary
   download. Dock the resizable response below or beside the editor, navigate search matches,
@@ -140,72 +151,6 @@ needs matching versions in `package.json`, `src-tauri/Cargo.toml`, and
 `src-tauri/tauri.conf.json`, plus a `docs/releases/vX.Y.Z.md` notes file.
 The release workflow embeds the matching file from [docs/releases](docs/releases/README.md)
 in the updater manifest.
-
-## Patch notes
-
-<details open>
-<summary>Kodama 1.4.0</summary>
-
-- Save WebSocket and Socket.IO requests, connect, send JSON or text, and inspect timestamped events in a live log.
-- Save named socket message examples and edit JSON with the same editor used for REST requests.
-- Try both protocols with the included cross-protocol chat server and sample collection.
-- Send repeat REST requests faster through a reused HTTP client. Responses over 10 MiB now show a size-limit error to keep memory use bounded.
-- Keep busy socket sessions responsive with bounded send queues and event logs.
-
-</details>
-
-<details>
-<summary>Kodama 1.3.1</summary>
-
-- Restore syntax highlighting for JSON response bodies while keeping search responsive for large responses.
-
-</details>
-
-<details>
-<summary>Kodama 1.3.0</summary>
-
-- Rename, remove, or duplicate the selected request with F2, Delete, and Ctrl/Cmd+D.
-- Restyle the environments, authorization, and collection dropdowns to follow the active theme, with brighter hover states and a checkmark on the selected option.
-
-</details>
-
-<details>
-<summary>Kodama 1.2.0</summary>
-
-- Show the installed app version in the sidebar.
-- Show a pulsing Kodama logo while the workspace loads.
-- Keep response search usable with responses over 100,000 lines.
-
-</details>
-
-<details>
-<summary>Kodama 1.1.0</summary>
-
-- Rename collections from their right-click menu; double-clicking a collection no longer opens the rename dialog.
-- Select and edit text across variable references in JSON request bodies and scripts.
-- Start resizing the sidebar only when the pointer press begins on its divider.
-- Open the patch note history from Settings > General, with the newest version expanded and older versions collapsed.
-
-</details>
-
-<details>
-<summary>Kodama 1.0.0</summary>
-
-- Restore open request tabs, including pinned tabs, when Kodama starts again.
-- Check for signed updates from Settings > General or automatically at startup.
-- Review release notes and choose when to install an available update.
-- Refined the version panel and update prompt for clearer release information.
-
-</details>
-
-<details>
-<summary>Kodama 0.1.0</summary>
-
-- Added signed in-app update checks when Kodama opens and a manual check in Settings > General.
-- Updates now show release notes and require your confirmation before installation.
-- Open request tabs, including ordinary and pinned tabs, are restored after restarting Kodama.
-
-</details>
 
 ## Variables and scripts
 
