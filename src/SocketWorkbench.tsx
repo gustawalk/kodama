@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
@@ -13,14 +13,30 @@ import type {
 import { entry, uid } from "./types";
 import { VariableField, type ResolvedVariable } from "./VariableField";
 import { StyledSelect } from "./StyledSelect";
+import { SocketAutoSenders } from "./SocketAutoSenders";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./components/ui/dialog";
 import "./SocketWorkbench.css";
 
 const CodeEditor = lazy(() =>
   import("./CodeEditor").then((module) => ({ default: module.CodeEditor })),
 );
 
-type LiveEvent = { id: string; at: string; kind: string; event: string; payload: string };
-type WireEvent = { sessionId: string; kind: string; event: string; payload: string };
+type EventSource = { autoSenderId?: string; autoSenderName?: string };
+type LiveEvent = EventSource & {
+  id: string;
+  at: string;
+  kind: string;
+  event: string;
+  payload: string;
+};
+type WireEvent = EventSource & { sessionId: string; kind: string; event: string; payload: string };
 const MAX_LOG_PAYLOAD = 16_384;
 const MAX_LOG_EVENTS = 500;
 type Props = {
@@ -67,12 +83,16 @@ export function SocketWorkbench({
   const [listening, setListening] = useState(false);
   const [selectedExampleId, setSelectedExampleId] = useState("");
   const [exampleName, setExampleName] = useState("");
+  const [saveExampleOpen, setSaveExampleOpen] = useState(false);
+  const [suspended, setSuspended] = useState<Set<string>>(new Set());
+  const syncQueue = useRef(Promise.resolve());
   const session = useRef<string | null>(null);
   const pausedRef = useRef(false);
   const buffer = useRef<LiveEvent[]>([]);
   const pending = useRef<LiveEvent[]>([]);
   const pendingFrame = useRef<number | null>(null);
-  const logEnd = useRef<HTMLDivElement>(null);
+  const manualScrollEvent = useRef<string | null>(null);
+  const logViewport = useRef<HTMLDivElement>(null);
   const socket = request.socket ?? {
     path: "/socket.io/",
     namespace: "/",
@@ -94,15 +114,19 @@ export function SocketWorkbench({
     pendingFrame.current = null;
     const batch = pending.current;
     pending.current = [];
+    for (const item of batch) {
+      if (item.kind === "sent" && !item.autoSenderId) manualScrollEvent.current = item.id;
+    }
     if (batch.length) setEvents((previous) => [...previous, ...batch].slice(-MAX_LOG_EVENTS));
   };
-  const addEvent = (kind: string, event: string, payload: string) => {
+  const addEvent = (kind: string, event: string, payload: string, source: EventSource = {}) => {
     const item = {
       id: uid(),
       at: new Date().toLocaleTimeString(),
       kind,
       event,
       payload: pretty(payload),
+      ...source,
     };
     if (pausedRef.current) {
       buffer.current.push(item);
@@ -120,9 +144,17 @@ export function SocketWorkbench({
     let unlisten: (() => void) | undefined;
     void listen<WireEvent>("socket-event", ({ payload }) => {
       if (payload.sessionId !== session.current) return;
-      if (payload.kind === "status")
+      if (payload.kind === "status") {
         setStatus(payload.event === "connected" ? "connected" : "disconnected");
-      addEvent(payload.kind, payload.event, payload.payload);
+        setSuspended(new Set());
+      }
+      if (payload.kind === "error" && payload.autoSenderId) {
+        setSuspended((previous) => new Set(previous).add(payload.autoSenderId!));
+      }
+      addEvent(payload.kind, payload.event, payload.payload, {
+        autoSenderId: payload.autoSenderId,
+        autoSenderName: payload.autoSenderName,
+      });
     })
       .then((fn) => {
         if (disposed) fn();
@@ -143,8 +175,30 @@ export function SocketWorkbench({
     };
   }, []);
   useEffect(() => {
-    if (!paused && active) logEnd.current?.scrollIntoView({ block: "end" });
+    const id = manualScrollEvent.current;
+    if (!id || !events.some((item) => item.id === id)) return;
+    manualScrollEvent.current = null;
+    const log = logViewport.current;
+    if (!paused && active && log) log.scrollTop = log.scrollHeight;
   }, [events, paused, active]);
+
+  const autoSenderInput = useMemo(
+    () => JSON.stringify(input()),
+    [request, defaults, collection.variables, environmentVariables, runtimeVariables],
+  );
+  useEffect(() => {
+    if (status !== "connected" || !session.current) return;
+    const id = session.current;
+    const snapshot = JSON.parse(autoSenderInput);
+    syncQueue.current = syncQueue.current.then(async () => {
+      if (session.current !== id) return;
+      try {
+        await invoke("sync_socket_auto_senders", { sessionId: id, input: snapshot });
+      } catch (error) {
+        if (session.current === id) addEvent("error", "auto sender settings", failure(error));
+      }
+    });
+  }, [status, autoSenderInput]);
 
   const setSocket = (field: keyof SocketSettings, value: string) =>
     onChange((next) => {
@@ -154,7 +208,7 @@ export function SocketWorkbench({
     const example = examples.find((item) => item.id === id);
     if (!example) return;
     setSelectedExampleId(id);
-    setExampleName(example.name);
+
     onChange((next) => {
       next.socket = {
         ...socket,
@@ -164,10 +218,17 @@ export function SocketWorkbench({
       };
     });
   };
-  const saveExample = () => {
-    const name = exampleName.trim() || `Message ${examples.length + 1}`;
+  const selectedExample = examples.find((item) => item.id === selectedExampleId);
+  const exampleChanged =
+    !!selectedExample &&
+    (selectedExample.event !== socket.event ||
+      selectedExample.payload !== socket.payload ||
+      selectedExample.format !== socket.format);
+  const saveExample = (asNew: boolean) => {
+    const name = asNew ? exampleName.trim() : selectedExample?.name;
+    if (!name) return;
     const example: SocketMessageExample = {
-      id: selectedExampleId || uid(),
+      id: asNew ? uid() : selectedExampleId,
       name,
       event: socket.event,
       payload: socket.payload,
@@ -176,14 +237,14 @@ export function SocketWorkbench({
     onChange((next) => {
       next.socket = {
         ...socket,
-        examples: selectedExampleId
+        examples: !asNew
           ? examples.map((item) => (item.id === selectedExampleId ? example : item))
           : [...examples, example],
       };
     });
     setSelectedExampleId(example.id);
-    setExampleName(name);
-    toast.success(selectedExampleId ? "Message example updated" : "Message example saved");
+    setSaveExampleOpen(false);
+    toast.success(asNew ? "Message saved" : "Saved message updated");
   };
   const deleteExample = () => {
     if (!selectedExampleId) return;
@@ -294,41 +355,81 @@ export function SocketWorkbench({
       </div>
       <div className="socket-layout">
         <div className="socket-compose">
-          <div className="socket-section-title">Send message</div>
-          <div className="socket-examples">
-            <StyledSelect
-              value={selectedExampleId}
-              onChange={loadExample}
-              options={examples.map((item) => ({ value: item.id, label: item.name }))}
-              placeholder="Load saved message"
-              ariaLabel="Saved message examples"
-            />
-            <button
-              className="subtle small"
-              onClick={() => {
-                setSelectedExampleId("");
-                setExampleName("");
-              }}
-            >
-              New
-            </button>
-          </div>
-          <div className="socket-example-save">
-            <input
-              aria-label="Message example name"
-              placeholder="Example name"
-              value={exampleName}
-              onChange={(event) => setExampleName(event.target.value)}
-            />
-            <button className="subtle small" onClick={saveExample}>
-              {selectedExampleId ? "Update" : "Save example"}
-            </button>
-            {selectedExampleId && (
-              <button className="subtle small" onClick={deleteExample}>
-                Delete
+          <div className="socket-section-title">Send event</div>
+          <div className="socket-presets">
+            <label className="socket-field">
+              Saved messages
+              <StyledSelect
+                value={selectedExample ? selectedExampleId : ""}
+                onChange={loadExample}
+                options={examples.map((item) => ({ value: item.id, label: item.name }))}
+                placeholder="Choose a saved message"
+                ariaLabel="Saved messages"
+              />
+            </label>
+            <div className="socket-preset-actions">
+              <button
+                className="subtle small"
+                onClick={() => {
+                  setExampleName("");
+                  setSaveExampleOpen(true);
+                }}
+              >
+                Save as new
               </button>
-            )}
+              <button
+                className="subtle small"
+                disabled={!exampleChanged}
+                onClick={() => saveExample(false)}
+              >
+                Update
+              </button>
+              {selectedExample && (
+                <button className="subtle small" onClick={deleteExample}>
+                  Delete
+                </button>
+              )}
+            </div>
+            <span className="hint">Save an event and payload to reuse in this request.</span>
           </div>
+          <Dialog open={saveExampleOpen} onOpenChange={setSaveExampleOpen}>
+            <DialogContent className="rename-dialog">
+              <DialogHeader>
+                <DialogTitle>Save message</DialogTitle>
+                <DialogDescription>
+                  Save the current event and payload as a new message preset.
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  saveExample(true);
+                }}
+              >
+                <input
+                  autoFocus
+                  className="dialog-input"
+                  aria-label="Saved message name"
+                  placeholder="Message name"
+                  value={exampleName}
+                  onChange={(event) => setExampleName(event.target.value)}
+                  required
+                />
+                <DialogFooter>
+                  <button
+                    type="button"
+                    className="subtle"
+                    onClick={() => setSaveExampleOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button className="send" disabled={!exampleName.trim()} type="submit">
+                    Save message
+                  </button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
           {isIo && (
             <label className="socket-field">
               Event name
@@ -381,9 +482,33 @@ export function SocketWorkbench({
               </button>
             )}
             <button className="send" disabled={status !== "connected"} onClick={() => void send()}>
-              Send message ↗
+              Send event ↗
             </button>
           </div>
+          <SocketAutoSenders
+            schedules={socket.autoSenders ?? []}
+            isIo={isIo}
+            variables={variables}
+            theme={theme}
+            connected={status === "connected"}
+            suspended={suspended}
+            onChange={(schedules) => {
+              const previous = socket.autoSenders ?? [];
+              setSuspended(
+                (current) =>
+                  new Set(
+                    [...current].filter(
+                      (id) =>
+                        JSON.stringify(previous.find((item) => item.id === id)) ===
+                        JSON.stringify(schedules.find((item) => item.id === id)),
+                    ),
+                  ),
+              );
+              onChange((next) => {
+                next.socket = { ...socket, autoSenders: schedules };
+              });
+            }}
+          />
           <button className="socket-settings-toggle" onClick={() => setSettingsOpen(!settingsOpen)}>
             {settingsOpen ? "▾" : "▸"} Connection settings
           </button>
@@ -413,14 +538,19 @@ export function SocketWorkbench({
                   </label>
                   <label className="socket-field">
                     Auth JSON
-                    <VariableField
-                      label="Socket.IO auth JSON"
-                      variables={variables}
-                      value={socket.auth}
-                      placeholder='{"token":"{{TOKEN}}"}'
-                      multiline
-                      onChange={(value) => setSocket("auth", value)}
-                    />
+                    <Suspense fallback={<div className="code-editor-loading">Loading editor…</div>}>
+                      <CodeEditor
+                        label="Socket.IO auth JSON"
+                        language="json"
+                        theme={theme}
+                        variables={variables}
+                        value={socket.auth}
+                        onChange={(value) => setSocket("auth", value)}
+                      />
+                    </Suspense>
+                    <span className="hint">
+                      Use variables such as {"{{TOKEN}}"}. Auth changes apply when you reconnect.
+                    </span>
                   </label>
                 </>
               )}
@@ -547,10 +677,9 @@ export function SocketWorkbench({
                 className="subtle small"
                 onClick={() => {
                   if (paused) {
-                    setEvents((previous) =>
-                      [...previous, ...buffer.current].slice(-MAX_LOG_EVENTS),
-                    );
+                    const resumed = buffer.current;
                     buffer.current = [];
+                    setEvents((previous) => [...previous, ...resumed].slice(-MAX_LOG_EVENTS));
                     setBuffered(0);
                   } else if (pendingFrame.current !== null) {
                     cancelAnimationFrame(pendingFrame.current);
@@ -582,7 +711,10 @@ export function SocketWorkbench({
                   void navigator.clipboard
                     .writeText(
                       events
-                        .map((item) => `[${item.at}] ${item.kind} ${item.event}: ${item.payload}`)
+                        .map(
+                          (item) =>
+                            `[${item.at}] ${item.kind}${item.autoSenderId ? ` [Auto: ${item.autoSenderName}]` : ""} ${item.event}: ${item.payload}`,
+                        )
                         .join("\n"),
                     )
                     .then(
@@ -595,7 +727,7 @@ export function SocketWorkbench({
               </button>
             </div>
           </div>
-          <div className="socket-events">
+          <div className="socket-events" ref={logViewport}>
             {events.length ? (
               events.map((item) => (
                 <div className={`socket-event ${item.kind}`} key={item.id}>
@@ -611,6 +743,11 @@ export function SocketWorkbench({
                             : "• Status"}
                     </span>
                     <strong>{item.event}</strong>
+                    {item.autoSenderId && (
+                      <span className="socket-auto-tag" title={item.autoSenderName}>
+                        Auto · {item.autoSenderName}
+                      </span>
+                    )}
                   </div>
                   {item.payload && <pre>{item.payload}</pre>}
                 </div>
@@ -618,7 +755,6 @@ export function SocketWorkbench({
             ) : (
               <div className="socket-empty">Connect to start seeing events here.</div>
             )}
-            <div ref={logEnd} />
           </div>
         </section>
       </div>

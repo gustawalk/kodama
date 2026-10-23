@@ -32,6 +32,11 @@ export type SocketSettings = {
   payload: string;
   format: "text" | "json";
   examples?: SocketMessageExample[];
+  autoSenders?: SocketAutoSender[];
+};
+export type SocketAutoSender = SocketMessageExample & {
+  enabled: boolean;
+  intervalSeconds: number;
 };
 export type ApiRequest = {
   id: string;

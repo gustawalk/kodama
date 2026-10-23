@@ -95,31 +95,6 @@
   font-size: 13px;
   font-weight: 700;
 }
-.socket-examples,
-.socket-example-save {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.socket-examples .styled-select-trigger {
-  flex: 1;
-  min-width: 0;
-}
-.socket-example-save input {
-  flex: 1;
-  min-width: 0;
-  height: 31px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--input);
-  color: var(--text);
-  padding: 0 9px;
-  font-size: 12px;
-}
-.socket-example-save button {
-  white-space: nowrap;
-}
 .socket-field {
   display: flex;
   flex-direction: column;
@@ -235,6 +210,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
   padding: 8px 15px 20px;
 }
 .socket-event {
@@ -291,4 +267,126 @@
   .socket-compose {
     max-height: 480px;
   }
+}
+.socket-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.socket-preset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.socket-preset-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.socket-presets .hint {
+  margin: 0;
+}
+.socket-auto-senders {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  font-size: 12px;
+}
+.socket-auto-senders summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+}
+.socket-auto-senders summary span {
+  color: var(--muted);
+  font-weight: 400;
+}
+.socket-auto-senders .hint {
+  margin: 10px 0;
+}
+.socket-schedule-list {
+  display: flex;
+  flex-direction: column;
+}
+.socket-schedule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.socket-schedule-description {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.socket-schedule-description span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.socket-schedule-dialog {
+  max-width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+.socket-schedule-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.socket-schedule-dialog .socket-field > input,
+.socket-schedule-dialog .variable-field > input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input);
+  color: var(--text);
+}
+.socket-schedule-dialog .code-editor {
+  max-height: 280px;
+  min-height: 150px;
+  overflow-y: auto;
+}
+.socket-schedule-enabled {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.socket-schedule-dialog .send {
+  padding: 8px 14px;
+  border-radius: 6px;
+}
+.socket-auto-tag {
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.socket-event > div {
+  flex-wrap: wrap;
+}
+.socket-settings .code-editor {
+  min-height: 130px;
+  max-height: 320px;
+  overflow: auto;
+}
+.socket-schedule-dialog [data-slot="dialog-footer"] {
+  background: var(--panel2);
+  border-color: var(--line);
+}
+
+/* WebKit overlay scrollbars can linger above portaled dialogs while fading out.
+   Keep background scrollbars hidden until the modal's closing animation ends. */
+body:has([data-slot="dialog-overlay"]) .socket-workbench * {
+  scrollbar-width: none;
+}
+body:has([data-slot="dialog-overlay"]) .socket-workbench *::-webkit-scrollbar {
+  display: none;
 }

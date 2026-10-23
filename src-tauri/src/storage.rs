@@ -52,6 +52,10 @@ fn validate(store: &Store) -> Result<(), String> {
                 for example in &socket.examples {
                     add(&example.id)?;
                 }
+                for sender in &socket.auto_senders {
+                    add(&sender.id)?;
+                    sender.validate(request.kind == "socketio")?;
+                }
             }
             for entry in request
                 .query
@@ -359,6 +363,62 @@ mod tests {
         assert_eq!(store.collections[0].requests[1].kind, "socketio");
         assert_eq!(store.collections[0].requests[0].socket.as_ref().unwrap().examples.len(), 2);
         assert_eq!(store.collections[0].requests[1].socket.as_ref().unwrap().examples.len(), 2);
+    }
+
+    #[test]
+    fn recurring_messages_round_trip_and_validate() {
+        let mut store: Store =
+            serde_json::from_str(include_str!("../../examples/demo-chat.kodama.json")).unwrap();
+        let sender = crate::model::SocketAutoSender {
+            id: Uuid::new_v4().to_string(),
+            name: "Keepalive".into(),
+            enabled: true,
+            interval_seconds: 30,
+            event: "ping".into(),
+            payload: "{\"token\":\"{{TOKEN}}\"}".into(),
+            format: "json".into(),
+        };
+        store.collections[0].requests[1]
+            .socket
+            .as_mut()
+            .unwrap()
+            .auto_senders
+            .push(sender.clone());
+        validate(&store).unwrap();
+        scrub_secrets(&mut store);
+        let portable = serde_json::to_string(&store).unwrap();
+        let mut restored: Store = serde_json::from_str(&portable).unwrap();
+        validate(&restored).unwrap();
+        assert_eq!(
+            restored.collections[0].requests[1]
+                .socket
+                .as_ref()
+                .unwrap()
+                .auto_senders,
+            vec![sender.clone()]
+        );
+        restored.collections[0].requests[1]
+            .socket
+            .as_mut()
+            .unwrap()
+            .auto_senders
+            .push(sender);
+        assert!(validate(&restored).unwrap_err().contains("Duplicate UUID"));
+        restored.collections[0].requests[1]
+            .socket
+            .as_mut()
+            .unwrap()
+            .auto_senders
+            .pop();
+        restored.collections[0].requests[1]
+            .socket
+            .as_mut()
+            .unwrap()
+            .auto_senders[0]
+            .interval_seconds = 0;
+        assert!(validate(&restored)
+            .unwrap_err()
+            .contains("positive whole number"));
     }
 
     #[test]

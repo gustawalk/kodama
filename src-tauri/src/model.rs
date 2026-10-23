@@ -70,6 +70,38 @@ pub struct SocketSettings {
     pub format: String,
     #[serde(default)]
     pub examples: Vec<SocketMessageExample>,
+    #[serde(default)]
+    pub auto_senders: Vec<SocketAutoSender>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SocketAutoSender {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub interval_seconds: u32,
+    pub event: String,
+    pub payload: String,
+    pub format: String,
+}
+
+impl SocketAutoSender {
+    pub fn validate(&self, is_io: bool) -> Result<(), String> {
+        if self.interval_seconds == 0 || self.interval_seconds > 2_147_483_647 {
+            return Err("Auto sender interval must be a positive whole number of seconds (at most 2147483647)".into());
+        }
+        if self.name.trim().is_empty() {
+            return Err("Enter an auto sender name".into());
+        }
+        if is_io && self.event.trim().is_empty() {
+            return Err("Enter a Socket.IO event name".into());
+        }
+        if !matches!(self.format.as_str(), "json" | "text") {
+            return Err("Auto sender format must be JSON or text".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

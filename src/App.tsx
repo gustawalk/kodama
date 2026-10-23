@@ -134,6 +134,8 @@ const collectionIds = (item: Collection) => [
     ...(value.pathParams ?? []).map((row) => row.id),
     ...value.headers.map((row) => row.id),
     ...value.body.fields.map((row) => row.id),
+    ...(value.socket?.examples ?? []).map((message) => message.id),
+    ...(value.socket?.autoSenders ?? []).map((sender) => sender.id),
   ]),
 ];
 function mergeWorkspace(current: Store, imported: Store) {
@@ -1212,6 +1214,9 @@ function App() {
         row.id = uid();
       },
     );
+    [...(item.socket?.examples ?? []), ...(item.socket?.autoSenders ?? [])].forEach((message) => {
+      message.id = uid();
+    });
     editCollection(collectionId, (next) => next.requests.push(item));
     open(item.id);
   };

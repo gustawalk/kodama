@@ -128,6 +128,7 @@ pub fn run() {
             clear_cookies,
             socket::connect_socket,
             socket::send_socket,
+            socket::sync_socket_auto_senders,
             socket::disconnect_socket,
             storage::load_workspaces,
             storage::save_workspaces,
