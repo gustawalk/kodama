@@ -2384,7 +2384,7 @@ dependencies = [
 
 [[package]]
 name = "kodama"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "base64 0.22.1",
  "boa_engine",

@@ -1,6 +1,19 @@
 # Patch notes
 
 <details open>
+<summary>Kodama 1.5.0</summary>
+
+- Schedule multiple recurring WebSocket and Socket.IO events with independent payloads and intervals. Enabled schedules start on connection and keep running across tab switches.
+- Identify automatic sends and their errors with an Auto tag and schedule name, including in copied event logs.
+- Edit Socket.IO auth JSON with syntax highlighting, indentation, and variable suggestions.
+- Reuse saved events through a simpler dropdown with Save as new, Update, and Delete actions.
+- Keep your place in the event log during automatic sends and incoming replies. Only manually sent events scroll the log to the bottom, using the renamed Send event button.
+- Preserve buffered events when resuming a paused log, and keep duplicated socket presets and schedules compatible with workspace saving and imports.
+- Hide the completed Saved locally status and prevent background scrollbars from lingering over socket dialogs.
+
+</details>
+
+<details>
 <summary>Kodama 1.4.0</summary>
 
 - Save WebSocket and Socket.IO requests, connect, send JSON or text, and inspect timestamped events in a live log.
@@ -66,4 +79,4 @@
 
 ## Preparing a release
 
-Before pushing a `vX.Y.Z` tag, add `docs/releases/vX.Y.Z.md` with the changes users should see in Kodama's update prompt. Keep the patch note lists here and in the README in sync, with only the newest `<details>` open. Keep `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` at `X.Y.Z`. The release workflow requires a nonempty notes file and updater signatures for the Windows, Linux, and macOS assets.
+Before pushing a `vX.Y.Z` tag, add `docs/releases/vX.Y.Z.md` with the changes users should see in Kodama's update prompt. Keep the patch note list here and the in-app history in sync, with only the newest `<details>` open. The main README links to this history instead of duplicating it. Keep `package.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json` at `X.Y.Z`. The release workflow requires a nonempty notes file and updater signatures for the Windows, Linux, and macOS assets.
