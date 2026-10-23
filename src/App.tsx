@@ -1892,9 +1892,11 @@ function App() {
             </button>
           </div>
           <div className="top-actions">
-            <span className="saved">
-              {!ready ? "Workspace unavailable" : saved ? "Saved locally" : "Saving…"}
-            </span>
+            {(!ready || !saved) && (
+              <span className="saved" role="status">
+                {!ready ? "Workspace unavailable" : "Saving…"}
+              </span>
+            )}
             <button
               className={`icon config-button${Object.values(sourceStatus).some((item) => item.error) ? " source-error" : ""}`}
               aria-label="Settings"

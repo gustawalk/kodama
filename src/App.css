@@ -434,12 +434,6 @@ textarea::placeholder {
   color: var(--muted);
   margin-right: 12px;
 }
-.saved:before {
-  content: "●";
-  font-size: 8px;
-  color: var(--accent);
-  margin-right: 7px;
-}
 .subtle {
   background: var(--panel2);
   border: 1px solid var(--line);
