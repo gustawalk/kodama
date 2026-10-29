@@ -1,4 +1,8 @@
-# Kodama
+<p align="center">
+  <img src="src-tauri/icons/128x128.png" width="80" alt="Kodama icon" />
+</p>
+
+<h1 align="center">Kodama</h1>
 
 Kodama is a local-first desktop API client for saving and running REST,
 WebSocket, and Socket.IO requests. It uses a React web interface in a Tauri 2
