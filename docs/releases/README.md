@@ -1,6 +1,16 @@
 # Patch notes
 
 <details open>
+<summary>Kodama 1.5.1</summary>
+
+- View session cookies in a name/value table with a cookie count, refresh, and copy actions.
+- Clarify that clearing cookies affects all domains in the session, and clear cookie snapshots across open tabs.
+- Improve the Send and Cancel buttons with icons, spacing, and keyboard focus styling.
+- Make selected payload text easier to see with a theme-colored highlight and subtle accent border.
+
+</details>
+
+<details>
 <summary>Kodama 1.5.0</summary>
 
 - Schedule multiple recurring WebSocket and Socket.IO events with independent payloads and intervals. Enabled schedules start on connection and keep running across tab switches.
