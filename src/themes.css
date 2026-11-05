@@ -563,13 +563,106 @@ html[data-kodama-theme] [data-slot="alert-dialog-content"] {
 .code-editor .cm-cursor {
   border-left-color: var(--accent) !important;
 }
-.code-editor .cm-selectionBackground,
-.code-editor .cm-editor.cm-focused .cm-selectionBackground {
-  background: color-mix(in srgb, var(--accent) 32%, transparent) !important;
-}
 
 html[data-kodama-theme] [data-sonner-toaster] [data-sonner-toast] {
   background: var(--kd-panel);
   color: var(--kd-text);
   border-color: var(--kd-line);
+}
+
+/* Keep the selection layer visible behind editable text. */
+.code-editor .cm-scroller,
+.code-editor .cm-content {
+  background: transparent !important;
+}
+/* Blend selection into the palette while keeping its edge distinct. */
+.code-editor .cm-selectionBackground,
+.code-editor .cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--kd-accent) 48%, var(--input)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kd-accent) 75%, var(--input));
+}
+.code-editor .cm-content ::selection,
+.code-editor .cm-content::selection {
+  background: var(--kd-accent) !important;
+  color: var(--kd-on-accent) !important;
+  -webkit-text-fill-color: var(--kd-on-accent) !important;
+}
+
+.send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 100px;
+  font-weight: 650;
+  border: 1px solid color-mix(in srgb, var(--kd-accent) 75%, var(--kd-text));
+  box-shadow: 0 2px 5px #0002;
+  transition:
+    background 120ms,
+    box-shadow 120ms;
+}
+.send:focus-visible {
+  outline: 2px solid var(--kd-accent);
+  outline-offset: 3px;
+}
+.send.cancelling {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--line);
+}
+.cookie-heading,
+.cookie-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cookie-heading {
+  justify-content: space-between;
+}
+.cookie-heading p {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.cookie-heading > div {
+  min-width: 0;
+  flex: 1;
+}
+.cookie-list {
+  overflow: auto;
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.cookie-list table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.cookie-list th,
+.cookie-list td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.cookie-list td {
+  overflow-wrap: anywhere;
+  max-width: 480px;
+  user-select: text;
+}
+.cookie-list th {
+  color: var(--muted);
+  background: var(--hover);
+}
+.cookie-list tr:last-child td {
+  border-bottom: 0;
+}
+.cookie-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+.cookie-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

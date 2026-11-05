@@ -12,3 +12,6 @@ Entry: `src/App.tsx` responseContent memo and response panel.
 - The CodeMirror view replaced a React span renderer in `d486d69` to support large responses; JSON language support must be included explicitly or all tokens display in one color.
 
 Updated: 2026-10-10
+
+- Payload selection visibility: `src/themes.css` must keep `.code-editor .cm-scroller` transparent; an opaque scroller can hide CodeMirror's selection layer. The editor root retains the themed input background.
+- Cookie response UI in `src/App.tsx` renders the native `get_cookies` header as name/value rows. Native `clear_cookies` clears the entire session jar, so all tab cookie snapshots must be invalidated together.

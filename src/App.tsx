@@ -2747,7 +2747,7 @@ function App() {
                       }
                     />
                     <button
-                      className="send"
+                      className={`send${busy ? " cancelling" : ""}`}
                       onClick={
                         busy
                           ? () => {
@@ -2756,7 +2756,8 @@ function App() {
                           : send
                       }
                     >
-                      {busy ? "Cancel" : "Send"} ↗
+                      {busy ? <X size={16} /> : <ArrowRight size={16} />}
+                      {busy ? "Cancel" : "Send"}
                     </button>
                   </div>
                   {urlPreview && (
@@ -3243,22 +3244,109 @@ function App() {
                   ) : response ? (
                     responseView === "cookies" ? (
                       <div className="response-headers">
-                        <p>Session cookies for {response.url}</p>
-                        <pre>{cookieText || "No cookies for this URL"}</pre>
-                        <button
-                          className="subtle small"
-                          onClick={() => {
-                            void invoke("clear_cookies").then(
-                              () => {
-                                if (selectedId) updateTabResult(selectedId, { cookieText: "" });
-                                toast.success("Session cookies cleared");
-                              },
-                              (err) => toast.error(message(err)),
-                            );
-                          }}
-                        >
-                          Clear session cookies
-                        </button>
+                        <div className="cookie-heading">
+                          <div>
+                            <strong>Session cookies</strong>
+                            <p>{response.url}</p>
+                          </div>
+                          <span>
+                            {cookieText
+                              ? cookieText.split(";").filter((cookie) => cookie.trim()).length
+                              : 0}{" "}
+                            cookies
+                          </span>
+                        </div>
+                        <p>
+                          Cookies sent to this URL. Clearing removes cookies for all domains in this
+                          session.
+                        </p>
+                        {cookieText ? (
+                          <div className="cookie-list">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Name</th>
+                                  <th>Value</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cookieText
+                                  .split(";")
+                                  .filter((cookie) => cookie.trim())
+                                  .map((cookie, index) => {
+                                    const separator = cookie.indexOf("=");
+                                    return (
+                                      <tr key={index}>
+                                        <td>
+                                          <code>
+                                            {cookie
+                                              .slice(0, separator < 0 ? undefined : separator)
+                                              .trim()}
+                                          </code>
+                                        </td>
+                                        <td>
+                                          <code>
+                                            {separator < 0 ? "" : cookie.slice(separator + 1)}
+                                          </code>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <p className="cookie-empty">No cookies stored for this URL.</p>
+                        )}
+                        <div className="cookie-actions">
+                          <button
+                            className="subtle small"
+                            onClick={() => {
+                              const tabId = selectedId;
+                              void invoke<string>("get_cookies", { url: response.url }).then(
+                                (value) => {
+                                  if (tabId) updateTabResult(tabId, { cookieText: value });
+                                },
+                                (err) => toast.error(message(err)),
+                              );
+                            }}
+                          >
+                            Refresh
+                          </button>
+                          <button
+                            className="subtle small"
+                            disabled={!cookieText}
+                            onClick={() => {
+                              void navigator.clipboard.writeText(cookieText).then(
+                                () => toast.success("Cookies copied"),
+                                (err) => toast.error(message(err)),
+                              );
+                            }}
+                          >
+                            Copy cookies
+                          </button>
+                          <button
+                            className="subtle small"
+                            onClick={() => {
+                              void invoke("clear_cookies").then(
+                                () => {
+                                  setTabResults((current) =>
+                                    Object.fromEntries(
+                                      Object.entries(current).map(([id, result]) => [
+                                        id,
+                                        { ...result, cookieText: "" },
+                                      ]),
+                                    ),
+                                  );
+                                  toast.success("Session cookies cleared");
+                                },
+                                (err) => toast.error(message(err)),
+                              );
+                            }}
+                          >
+                            Clear all session cookies
+                          </button>
+                        </div>
                       </div>
                     ) : responseView === "body" ? (
                       response.binary ? (
@@ -3323,7 +3411,7 @@ function App() {
                 <h1>Your API workspace</h1>
                 <p>Choose a request or start a collection.</p>
                 <button
-                  className="send"
+                  className={`send${busy ? " cancelling" : ""}`}
                   onClick={() =>
                     editStore((next) => {
                       next.collections.push(newCollection());
@@ -3704,7 +3792,10 @@ function App() {
               <button className="subtle" onClick={() => applyImport("merge")}>
                 Merge
               </button>
-              <button className="send" onClick={() => applyImport("replace")}>
+              <button
+                className={`send${busy ? " cancelling" : ""}`}
+                onClick={() => applyImport("replace")}
+              >
                 Replace
               </button>
             </DialogFooter>
@@ -3742,7 +3833,11 @@ function App() {
                 <button className="subtle" type="button" onClick={() => setRenameDialog(null)}>
                   Cancel
                 </button>
-                <button className="send" type="submit" disabled={!renameValue.trim()}>
+                <button
+                  className={`send${busy ? " cancelling" : ""}`}
+                  type="submit"
+                  disabled={!renameValue.trim()}
+                >
                   Save
                 </button>
               </DialogFooter>
@@ -3769,7 +3864,7 @@ function App() {
                 Cancel
               </button>
               <button
-                className="send"
+                className={`send${busy ? " cancelling" : ""}`}
                 onClick={() => {
                   try {
                     const item = importCurl(curlText);
@@ -3881,7 +3976,7 @@ function App() {
                 maxLength={80}
               />
               <button
-                className="send"
+                className={`send${busy ? " cancelling" : ""}`}
                 type="submit"
                 disabled={!newWorkspaceName.trim() || busy || switchingWorkspace}
               >
@@ -4443,7 +4538,7 @@ function App() {
                 Cancel
               </button>
               <button
-                className="send"
+                className={`send${busy ? " cancelling" : ""}`}
                 onClick={() => {
                   if (!headerVariable) return;
                   const name = headerVariable.name.trim().replace(/^_\./, "");
