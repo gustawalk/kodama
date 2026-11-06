@@ -15,3 +15,7 @@ Updated: 2026-10-10
 
 - Payload selection visibility: `src/themes.css` must keep `.code-editor .cm-scroller` transparent; an opaque scroller can hide CodeMirror's selection layer. The editor root retains the themed input background.
 - Cookie response UI in `src/App.tsx` renders the native `get_cookies` header as name/value rows. Native `clear_cookies` clears the entire session jar, so all tab cookie snapshots must be invalidated together.
+
+- Cookies use a dedicated scroll container instead of the header-row grid. Fixed table layout wraps long values. The demo endpoint /diagnostics/cookies/long exercises this layout.
+
+- Manual cookie management: `CookieManager.tsx` reads/saves origin-scoped session overrides through `manage_cookies`. `ManagedJar` in `src-tauri/src/lib.rs` implements CookieStore, merging enabled overrides with the native jar and masking disabled/deleted names. The response Cookies branch renders before response/error checks, so cookies can be prepared before the first send. Saves validate names, values, and duplicate names; deleted entries remain internal tombstones to mask server jar entries.

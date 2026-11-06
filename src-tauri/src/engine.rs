@@ -1,8 +1,9 @@
 use crate::model::{Entry, RunInput, RunResult, Variable};
 use crate::script::{run_script, ScriptResponse};
+#[cfg(test)]
+use reqwest::cookie::Jar;
 use base64::Engine;
 use reqwest::{
-    cookie::Jar,
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Method, Url,
 };
@@ -251,7 +252,9 @@ pub async fn execute(input: RunInput) -> Result<RunResult, String> {
     execute_with_jar(input, Arc::new(Jar::default())).await
 }
 
-pub fn build_client(jar: Arc<Jar>) -> Result<Client, String> {
+pub fn build_client(
+    jar: Arc<impl reqwest::cookie::CookieStore + 'static>,
+) -> Result<Client, String> {
     Client::builder()
         .cookie_provider(jar)
         .redirect(reqwest::redirect::Policy::limited(10))

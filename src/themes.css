@@ -635,6 +635,7 @@ html[data-kodama-theme] [data-sonner-toaster] [data-sonner-toast] {
   border-radius: 8px;
 }
 .cookie-list table {
+  table-layout: fixed;
   width: 100%;
   border-collapse: collapse;
   text-align: left;
@@ -652,7 +653,11 @@ html[data-kodama-theme] [data-sonner-toaster] [data-sonner-toast] {
 }
 .cookie-list th {
   color: var(--muted);
-  background: var(--hover);
+  background: transparent;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
 }
 .cookie-list tr:last-child td {
   border-bottom: 0;
@@ -665,4 +670,217 @@ html[data-kodama-theme] [data-sonner-toaster] [data-sonner-toast] {
 .cookie-actions button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Cookie content must shrink within either response dock without moving tabs. */
+.response-cookies {
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  overflow: auto;
+  padding: 16px 29px;
+  user-select: text;
+}
+.cookie-list th:first-child {
+  width: 30%;
+}
+.cookie-list code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Response chrome must never shrink when the payload is taller than the dock. */
+.response-panel > .response-top,
+.response-panel > .response-details,
+.response-panel > .response-find {
+  flex-shrink: 0;
+}
+.response-cookies {
+  flex: 1 1 0;
+}
+.dock-right .response-cookies {
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+.response-cookies {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.response-cookies > p,
+.cookie-heading p {
+  color: var(--muted);
+  font-size: 11px;
+}
+.cookie-list {
+  border-radius: 4px;
+}
+.cookie-list td {
+  font-size: 11px;
+}
+.cookie-value {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.cookie-value-content {
+  flex: 1;
+  min-width: 0;
+}
+.cookie-entry-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: none;
+}
+.cookie-char-count {
+  color: var(--muted);
+  font-size: 10px;
+}
+.cookie-copy {
+  display: inline-flex;
+  flex: none;
+  padding: 5px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+.cookie-copy:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.cookie-copy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.manual-cookie-list {
+  margin: 18px 0 14px;
+  border-top: 1px solid var(--line);
+}
+.manual-cookie-labels {
+  display: grid;
+  grid-template-columns: minmax(70px, 28%) 1fr;
+  padding: 9px 36px 9px 24px;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--line);
+}
+.manual-cookie-row {
+  display: grid;
+  grid-template-columns: 16px minmax(70px, 26%) minmax(0, 1fr) 24px;
+  align-items: start;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.manual-cookie-row > input {
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+}
+.manual-cookie-name {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  padding-top: 2px;
+}
+.manual-cookie-row .cookie-value {
+  min-width: 0;
+  font-size: 11px;
+}
+.manual-cookie-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.manual-cookie-tools .icon {
+  width: 24px;
+  height: 24px;
+  color: var(--muted);
+}
+.manual-cookie-editor {
+  grid-column: 2 / 4;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.manual-cookie-editor input,
+.manual-cookie-editor textarea {
+  width: 100%;
+  min-width: 0;
+  background: var(--input);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 7px;
+  font-size: 11px;
+}
+.manual-cookie-editor textarea {
+  resize: vertical;
+}
+
+.response-cookies > .cookie-actions {
+  justify-content: flex-end;
+}
+
+/* Consistent native checkbox behavior with palette-aware custom visuals. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  padding: 0;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--muted) 65%, var(--line));
+  border-radius: 4px;
+  background: var(--input);
+  cursor: pointer;
+  vertical-align: middle;
+  transition:
+    background 120ms,
+    border-color 120ms;
+}
+input[type="checkbox"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: var(--kd-on-accent);
+  clip-path: polygon(12% 44%, 0 58%, 38% 96%, 100% 20%, 85% 8%, 36% 69%);
+  transform: scale(0);
+}
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--input),
+    0 0 0 3px var(--accent);
+}
+input[type="checkbox"]:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+@media (forced-colors: active) {
+  input[type="checkbox"] {
+    appearance: auto;
+  }
+  input[type="checkbox"]::before {
+    display: none;
+  }
+  input[type="checkbox"]:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
 }

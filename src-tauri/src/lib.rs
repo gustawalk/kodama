@@ -19,8 +19,151 @@ use tokio::sync::oneshot;
 
 #[derive(Default)]
 struct ActiveRequests(Mutex<HashMap<String, oneshot::Sender<()>>>);
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct ManualCookie {
+    name: String,
+    value: String,
+    enabled: bool,
+    #[serde(default)]
+    deleted: bool,
+}
+#[derive(Default)]
+struct ManagedJar {
+    jar: Jar,
+    manual: RwLock<HashMap<String, Vec<ManualCookie>>>,
+}
+impl CookieStore for ManagedJar {
+    fn set_cookies(
+        &self,
+        headers: &mut dyn Iterator<Item = &reqwest::header::HeaderValue>,
+        url: &Url,
+    ) {
+        self.jar.set_cookies(headers, url);
+    }
+    fn cookies(&self, url: &Url) -> Option<reqwest::header::HeaderValue> {
+        let original = self.jar.cookies(url);
+        let manual = self.manual.read().ok()?;
+        let rows = manual.get(&url.origin().ascii_serialization());
+        let mut parts: Vec<String> = original
+            .as_ref()
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .split(';')
+            .filter(|v| !v.trim().is_empty())
+            .filter(|v| {
+                let name = v.split('=').next().unwrap_or("").trim();
+                !rows.is_some_and(|rows| rows.iter().any(|r| r.name == name))
+            })
+            .map(|v| v.trim().to_string())
+            .collect();
+        if let Some(rows) = rows {
+            parts.extend(
+                rows.iter()
+                    .filter(|r| r.enabled && !r.deleted)
+                    .map(|r| format!("{}={}", r.name, r.value)),
+            );
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            reqwest::header::HeaderValue::from_str(&parts.join("; ")).ok()
+        }
+    }
+}
+
+#[tauri::command]
+fn manage_cookies(
+    url: String,
+    rows: Option<Vec<ManualCookie>>,
+    cookies: State<'_, SessionCookies>,
+) -> Result<Vec<ManualCookie>, String> {
+    let url = Url::parse(&url).map_err(|e| e.to_string())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("Use an HTTP or HTTPS URL".into());
+    }
+    let session = cookies.0.read().map_err(|_| "Cookie jar unavailable")?;
+    let origin = url.origin().ascii_serialization();
+    if let Some(rows) = rows {
+        let mut names = std::collections::HashSet::new();
+        for row in &rows {
+            if row.name.is_empty()
+                || !row
+                    .name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
+                || row
+                    .value
+                    .bytes()
+                    .any(|b| b < 0x21 || b > 0x7e || b";\"\\".contains(&b))
+            {
+                return Err("Invalid cookie name or value".into());
+            }
+            if !names.insert(&row.name) {
+                return Err("Cookie names must be unique".into());
+            }
+        }
+        let mut rows = rows;
+        let mut previous = session
+            .jar
+            .manual
+            .read()
+            .map_err(|_| "Cookie jar unavailable")?
+            .get(&origin)
+            .cloned()
+            .unwrap_or_default();
+        if let Some(header) = session.jar.jar.cookies(&url) {
+            for part in header.to_str().unwrap_or("").split(';') {
+                if let Some((name, value)) = part.trim().split_once('=') {
+                    previous.push(ManualCookie {
+                        name: name.into(),
+                        value: value.into(),
+                        enabled: true,
+                        deleted: false,
+                    });
+                }
+            }
+        }
+        for mut old in previous {
+            if !rows.iter().any(|r| r.name == old.name) {
+                old.enabled = false;
+                old.deleted = true;
+                rows.push(old);
+            }
+        }
+        session
+            .jar
+            .manual
+            .write()
+            .map_err(|_| "Cookie jar unavailable")?
+            .insert(origin.clone(), rows);
+    }
+    let mut result = session
+        .jar
+        .manual
+        .read()
+        .map_err(|_| "Cookie jar unavailable")?
+        .get(&origin)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(header) = session.jar.jar.cookies(&url) {
+        for part in header.to_str().unwrap_or("").split(';') {
+            if let Some((name, value)) = part.trim().split_once('=') {
+                if !result.iter().any(|r| r.name == name) {
+                    result.push(ManualCookie {
+                        name: name.into(),
+                        value: value.into(),
+                        enabled: true,
+                        deleted: false,
+                    });
+                }
+            }
+        }
+    }
+    Ok(result.into_iter().filter(|r| !r.deleted).collect())
+}
+
 struct SessionHttp {
-    jar: Arc<Jar>,
+    jar: Arc<ManagedJar>,
     client: Option<Client>,
 }
 
@@ -29,7 +172,7 @@ struct SessionCookies(RwLock<SessionHttp>);
 impl Default for SessionCookies {
     fn default() -> Self {
         Self(RwLock::new(SessionHttp {
-            jar: Arc::new(Jar::default()),
+            jar: Arc::new(ManagedJar::default()),
             client: None,
         }))
     }
@@ -93,7 +236,7 @@ fn get_cookies(url: String, cookies: State<'_, SessionCookies>) -> Result<String
 #[tauri::command]
 fn clear_cookies(cookies: State<'_, SessionCookies>) -> Result<(), String> {
     *cookies.0.write().map_err(|_| "Cookie jar is unavailable")? = SessionHttp {
-        jar: Arc::new(Jar::default()),
+        jar: Arc::new(ManagedJar::default()),
         client: None,
     };
     Ok(())
@@ -125,6 +268,7 @@ pub fn run() {
             send_request,
             cancel_request,
             get_cookies,
+            manage_cookies,
             clear_cookies,
             socket::connect_socket,
             socket::send_socket,
@@ -142,4 +286,23 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod managed_cookie_tests {
+    use super::*;
+    #[test]
+    fn overrides_disables_and_isolates_origins() {
+        let jar = ManagedJar::default();
+        let url = Url::parse("https://example.test/path").unwrap();
+        jar.jar.add_cookie_str("session=server; Path=/", &url);
+        jar.manual.write().unwrap().insert(url.origin().ascii_serialization(), vec![
+            ManualCookie { name: "session".into(), value: "manual".into(), enabled: true, deleted: false },
+            ManualCookie { name: "extra".into(), value: "value".into(), enabled: true, deleted: false },
+        ]);
+        assert_eq!(jar.cookies(&url).unwrap(), "session=manual; extra=value");
+        assert!(jar.cookies(&Url::parse("https://other.test/").unwrap()).is_none());
+        jar.manual.write().unwrap().get_mut(&url.origin().ascii_serialization()).unwrap()[0].enabled = false;
+        assert_eq!(jar.cookies(&url).unwrap(), "extra=value");
+    }
 }
