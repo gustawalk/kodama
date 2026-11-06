@@ -1,6 +1,17 @@
 # Patch notes
 
 <details open>
+<summary>Kodama 1.5.2</summary>
+
+- Manage session cookies before the first request with automatic saving, editable names and values, enable toggles, and delete actions.
+- Keep cookie rows compact, with per-value copying, character counts, and expand/collapse controls for long values. Cancel editing restores the original cookie.
+- Keep response tabs accessible when inspecting long cookies in either response dock.
+- Match checkboxes to the active theme and keep keyboard focus indicators inside their bounds.
+- Add a long-cookie request to the demo API and OpenAPI examples for testing cookie management and response layout.
+
+</details>
+
+<details>
 <summary>Kodama 1.5.1</summary>
 
 - View session cookies in a name/value table with a cookie count, refresh, and copy actions.
