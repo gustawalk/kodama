@@ -139,6 +139,11 @@ export function createDemoApi() {
       const requestId = crypto.randomUUID();
       return json({ requestId, body, note: request.headers.get("X-Demo-Note"), receivedAt: new Date().toISOString() }, 200, { "X-Request-Id": requestId });
     }
+    if (path === "/diagnostics/cookies/long" && method === "GET") {
+      const value = "kodama-demo-".repeat(320);
+      return json({ message: "Long cookie set. Open Cookies, then switch back to Body.", cookieLength: value.length }, 200, { "Set-Cookie": `kodama_long=${value}; Path=/; HttpOnly; SameSite=Lax` });
+    }
+
     if (path === "/diagnostics/cookies" && method === "GET") {
       const cookie = request.headers.get("cookie");
       return json({ receivedCookie: cookie, hasDemoCookie: !!cookie?.includes("kodama_demo=seen") }, 200, { "Set-Cookie": "kodama_demo=seen; Path=/; HttpOnly; SameSite=Lax" });
@@ -147,7 +152,7 @@ export function createDemoApi() {
       const status = Number(statusCode);
       return ALLOWED_STATUSES.has(status) ? json({ status, message: `Demo response ${status}` }, status) : failure(400, "unsupported_status", "Choose 200, 201, 400, 404, 418, or 500");
     }
-    const allowed = path === "/accounts" ? "GET, POST" : accountId ? "GET, PATCH, DELETE" : path === "/health" || path === "/openapi.json" || path === "/me" || path === "/protected" || path === "/diagnostics/cookies" || statusCode ? "GET" : path === "/login" || path === "/logout" || path === "/diagnostics/echo" ? "POST" : null;
+    const allowed = path === "/accounts" ? "GET, POST" : accountId ? "GET, PATCH, DELETE" : path === "/health" || path === "/openapi.json" || path === "/me" || path === "/protected" || path === "/diagnostics/cookies" || path === "/diagnostics/cookies/long" || statusCode ? "GET" : path === "/login" || path === "/logout" || path === "/diagnostics/echo" ? "POST" : null;
     return allowed ? failure(405, "method_not_allowed", `Use ${allowed} for this route`, { Allow: allowed }) : failure(404, "not_found", "Route not found");
   };
 }

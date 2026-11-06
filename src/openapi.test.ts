@@ -5,7 +5,7 @@ import demoDocument from "../examples/demo-openapi.json";
 describe("OpenAPI import", () => {
   test("imports the demo workflow with Bearer auth and a reviewable login script", () => {
     const collection = importOpenApi(demoDocument).collections[0];
-    expect(collection.requests).toHaveLength(14);
+    expect(collection.requests).toHaveLength(15);
     const login = collection.requests.find((request) => request.sourceKey === "POST /login");
     const protectedRoute = collection.requests.find(
       (request) => request.sourceKey === "GET /protected",

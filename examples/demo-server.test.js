@@ -85,6 +85,9 @@ describe("in-memory demo API", () => {
     expect(echoed.note).toBe("from test");
     const first = await call(api, "/diagnostics/cookies");
     expect((await first.json()).hasDemoCookie).toBe(false);
+    const longCookie = await call(api, "/diagnostics/cookies/long");
+    expect(longCookie.headers.get("Set-Cookie").length).toBeGreaterThan(3800);
+    expect((await longCookie.json()).cookieLength).toBe(3840);
     const second = await call(api, "/diagnostics/cookies", { headers: { Cookie: first.headers.get("Set-Cookie").split(";", 1)[0] } });
     expect((await second.json()).hasDemoCookie).toBe(true);
     expect((await call(api, "/diagnostics/status/418")).status).toBe(418);
