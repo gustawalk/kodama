@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { ChevronDown, ChevronUp, Copy } from "lucide-react";
 import { toast } from "sonner";
 
-const COOKIE_PREVIEW_LENGTH = 160;
+const COOKIE_PREVIEW_LENGTH = 80;
 
 export function CookieValue({ name, value }: { name: string; value: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -12,7 +12,7 @@ export function CookieValue({ name, value }: { name: string; value: string }) {
     <div className="cookie-value">
       <div className="cookie-value-content">
         <span id={contentId}>
-          <code>
+          <code className="break-all">
             {value
               ? long && !expanded
                 ? value.slice(0, COOKIE_PREVIEW_LENGTH) + "…"
