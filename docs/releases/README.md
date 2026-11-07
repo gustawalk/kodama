@@ -1,6 +1,15 @@
 # Patch notes
 
 <details open>
+<summary>Kodama 1.5.3</summary>
+
+- Fix native state access for session cookies and socket connections.
+- Correct response size-limit handling and socket payload conversion in the native backend.
+- Shorten collapsed cookie previews to 80 characters and break long values to keep cookie rows compact.
+
+</details>
+
+<details>
 <summary>Kodama 1.5.2</summary>
 
 - Manage session cookies before the first request with automatic saving, editable names and values, enable toggles, and delete actions.
