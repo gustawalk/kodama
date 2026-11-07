@@ -81,7 +81,11 @@ fn manage_cookies(
     if !matches!(url.scheme(), "http" | "https") {
         return Err("Use an HTTP or HTTPS URL".into());
     }
-    let session = cookies.0.read().map_err(|_| "Cookie jar unavailable")?;
+    let session = cookies
+        .inner()
+        .0
+        .read()
+        .map_err(|_| "Cookie jar unavailable")?;
     let origin = url.origin().ascii_serialization();
     if let Some(rows) = rows {
         let mut names = std::collections::HashSet::new();
@@ -94,7 +98,7 @@ fn manage_cookies(
                 || row
                     .value
                     .bytes()
-                    .any(|b| b < 0x21 || b > 0x7e || b";\"\\".contains(&b))
+                    .any(|b| !(0x21..=0x7e).contains(&b) || b";\"\\".contains(&b))
             {
                 return Err("Invalid cookie name or value".into());
             }
@@ -225,7 +229,11 @@ async fn send_request(
 #[tauri::command]
 fn get_cookies(url: String, cookies: State<'_, SessionCookies>) -> Result<String, String> {
     let url = Url::parse(&url).map_err(|e| format!("Invalid URL: {e}"))?;
-    let jar = cookies.0.read().map_err(|_| "Cookie jar is unavailable")?;
+    let jar = cookies
+        .inner()
+        .0
+        .read()
+        .map_err(|_| "Cookie jar is unavailable")?;
     Ok(jar
         .jar
         .cookies(&url)
@@ -235,7 +243,11 @@ fn get_cookies(url: String, cookies: State<'_, SessionCookies>) -> Result<String
 
 #[tauri::command]
 fn clear_cookies(cookies: State<'_, SessionCookies>) -> Result<(), String> {
-    *cookies.0.write().map_err(|_| "Cookie jar is unavailable")? = SessionHttp {
+    *cookies
+        .inner()
+        .0
+        .write()
+        .map_err(|_| "Cookie jar is unavailable")? = SessionHttp {
         jar: Arc::new(ManagedJar::default()),
         client: None,
     };
@@ -296,13 +308,33 @@ mod managed_cookie_tests {
         let jar = ManagedJar::default();
         let url = Url::parse("https://example.test/path").unwrap();
         jar.jar.add_cookie_str("session=server; Path=/", &url);
-        jar.manual.write().unwrap().insert(url.origin().ascii_serialization(), vec![
-            ManualCookie { name: "session".into(), value: "manual".into(), enabled: true, deleted: false },
-            ManualCookie { name: "extra".into(), value: "value".into(), enabled: true, deleted: false },
-        ]);
+        jar.manual.write().unwrap().insert(
+            url.origin().ascii_serialization(),
+            vec![
+                ManualCookie {
+                    name: "session".into(),
+                    value: "manual".into(),
+                    enabled: true,
+                    deleted: false,
+                },
+                ManualCookie {
+                    name: "extra".into(),
+                    value: "value".into(),
+                    enabled: true,
+                    deleted: false,
+                },
+            ],
+        );
         assert_eq!(jar.cookies(&url).unwrap(), "session=manual; extra=value");
-        assert!(jar.cookies(&Url::parse("https://other.test/").unwrap()).is_none());
-        jar.manual.write().unwrap().get_mut(&url.origin().ascii_serialization()).unwrap()[0].enabled = false;
+        assert!(jar
+            .cookies(&Url::parse("https://other.test/").unwrap())
+            .is_none());
+        jar.manual
+            .write()
+            .unwrap()
+            .get_mut(&url.origin().ascii_serialization())
+            .unwrap()[0]
+            .enabled = false;
         assert_eq!(jar.cookies(&url).unwrap(), "extra=value");
     }
 }

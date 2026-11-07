@@ -59,7 +59,7 @@ fn emit_source(
             payload.len()
         )
     } else {
-        payload.to_owned()
+        payload.to_string()
     };
     let _ = app.emit(
         "socket-event",
@@ -396,7 +396,7 @@ pub async fn connect_socket(
     )?;
     let mut url = Url::parse(&address).map_err(|e| format!("Invalid socket URL: {e}"))?;
     let headers = headers(&input, &values)?;
-    if manager.0.lock().await.contains_key(&session_id) {
+    if manager.inner().0.lock().await.contains_key(&session_id) {
         return Err("This socket is already connected".into());
     }
     if input.request.kind == "websocket" {
@@ -411,6 +411,7 @@ pub async fn connect_socket(
             );
         }
         manager
+            .inner()
             .0
             .lock()
             .await
@@ -429,7 +430,7 @@ pub async fn connect_socket(
         };
         let (mut writer, mut reader) = stream.split();
         let (sender, mut receiver) = mpsc::channel(WEBSOCKET_SEND_QUEUE_SIZE);
-        let mut connections = manager.0.lock().await;
+        let mut connections = manager.inner().0.lock().await;
         if !matches!(connections.get(&session_id), Some(SocketHandle::Connecting)) {
             return Ok(());
         }
@@ -588,6 +589,7 @@ pub async fn connect_socket(
             .boxed()
         });
         manager
+            .inner()
             .0
             .lock()
             .await
@@ -614,7 +616,7 @@ pub async fn connect_socket(
                 _ => "Socket.IO handshake timed out".into(),
             });
         }
-        let mut connections = manager.0.lock().await;
+        let mut connections = manager.inner().0.lock().await;
         if !matches!(connections.get(&session_id), Some(SocketHandle::Connecting)) {
             drop(connections);
             let _ = client.disconnect().await;

@@ -1,8 +1,8 @@
 use crate::model::{Entry, RunInput, RunResult, Variable};
 use crate::script::{run_script, ScriptResponse};
+use base64::Engine;
 #[cfg(test)]
 use reqwest::cookie::Jar;
-use base64::Engine;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Method, Url,
@@ -423,18 +423,17 @@ pub async fn execute_with_client(input: RunInput, client: Client) -> Result<RunR
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("<binary>").to_string()))
         .collect();
-    let too_large = || {
-        format!(
+    let too_large = format!(
             "Response exceeds the 10 MiB preview limit\nURL: {response_url}\nUse a download tool for larger bodies."
-        )
-    };
+    );
+
     if has_response_body
         && status != reqwest::StatusCode::NOT_MODIFIED
         && response
             .content_length()
             .is_some_and(|size| size > MAX_RESPONSE_BYTES as u64)
     {
-        return Err(too_large());
+        return Err(too_large.clone());
     }
     let mut bytes = Vec::new();
     while let Some(chunk) = response
@@ -443,7 +442,7 @@ pub async fn execute_with_client(input: RunInput, client: Client) -> Result<RunR
         .map_err(|e| format!("Could not read response\nURL: {response_url}\nDetails: {e}"))?
     {
         if chunk.len() > MAX_RESPONSE_BYTES - bytes.len() {
-            return Err(too_large());
+            return Err(too_large.clone());
         }
         bytes.extend_from_slice(&chunk);
     }
